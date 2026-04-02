@@ -1,0 +1,22 @@
+{
+  "name": "mumscards",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "pnpm --dir apps/app start",
+    "ios": "pnpm --dir apps/app ios",
+    "android": "pnpm --dir apps/app android",
+    "web": "pnpm --dir apps/app web",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm test:unit && pnpm test:components",
+    "test:unit": "pnpm -r --filter \"./packages/*\" test",
+    "test:components": "pnpm --dir apps/app test",
+    "test:e2e:web": "playwright test",
+    "test:e2e:native": "maestro test maestro/flows",
+    "build:web": "pnpm --dir apps/app export:web"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

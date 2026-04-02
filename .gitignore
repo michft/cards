@@ -1,0 +1,11 @@
+node_modules
+.pnpm-store
+.expo
+.turbo
+coverage
+dist
+playwright-report
+test-results
+apps/app/.expo
+apps/app/dist
+apps/app/web-build

@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@mumscards/engine-core": [
+        "packages/engine-core/src"
+      ],
+      "@mumscards/game-klondike": [
+        "packages/game-klondike/src"
+      ],
+      "@mumscards/storage": [
+        "packages/storage/src"
+      ]
+    }
+  }
+}

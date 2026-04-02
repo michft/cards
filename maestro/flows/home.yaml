@@ -1,0 +1,5 @@
+appId: com.mumscards.app
+---
+- launchApp
+- assertVisible: "Mum's Cards"
+- assertVisible: "New Game"
