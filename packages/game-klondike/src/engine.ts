@@ -88,7 +88,7 @@ export function recycleWaste(state: KlondikeState): KlondikeState {
   }
 
   const next = cloneKlondikeState(state);
-  next.stock = [...next.waste].reverse();
+  next.stock = recycleWasteIntoStock(next.waste, next.drawCount);
   next.waste = [];
 
   return next;
@@ -550,6 +550,16 @@ function shuffle<T>(items: T[], random: () => number): T[] {
   }
 
   return next;
+}
+
+function recycleWasteIntoStock<T>(waste: T[], drawCount: number): T[] {
+  const groups: T[][] = [];
+
+  for (let index = 0; index < waste.length; index += drawCount) {
+    groups.push(waste.slice(index, index + drawCount));
+  }
+
+  return groups.reverse().flat();
 }
 
 function getSuitSymbol(suit: string): string {

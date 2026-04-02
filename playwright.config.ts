@@ -6,7 +6,7 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:8081',
   },
   webServer: {
-    command: 'python3 -m http.server 8081 -d apps/app/dist',
+    command: 'pnpm web:preview',
     url: 'http://127.0.0.1:8081',
     reuseExistingServer: true,
     timeout: 120_000,

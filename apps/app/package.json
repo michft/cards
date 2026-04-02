@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "export:web": "expo export --platform web",
+    "web:build": "expo export --platform web",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },

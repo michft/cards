@@ -7,16 +7,20 @@
     "dev": "pnpm --dir apps/app start",
     "ios": "pnpm --dir apps/app ios",
     "android": "pnpm --dir apps/app android",
-    "web": "pnpm --dir apps/app web",
+    "web": "pnpm web:dev",
+    "web:dev": "pnpm --filter app run web",
+    "web:preview": "pnpm exec serve apps/app/dist --listen 8081 --single",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm test:unit && pnpm test:components",
     "test:unit": "pnpm -r --filter \"./packages/*\" test",
     "test:components": "pnpm --dir apps/app test",
     "test:e2e:web": "playwright test",
     "test:e2e:native": "maestro test maestro/flows",
-    "build:web": "pnpm --dir apps/app export:web"
+    "build:web": "pnpm web:build",
+    "web:build": "pnpm --filter app run web:build"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0"
+    "@playwright/test": "^1.55.0",
+    "serve": "^14.2.4"
   }
 }
