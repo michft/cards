@@ -3,6 +3,7 @@ import type {
   KlondikeEmptyTableauPolicy,
   KlondikeHintMode,
 } from '@mumscards/game-klondike';
+import type { FreeCellTableauBuildPolicy } from '@mumscards/game-freecell';
 import type { SpiderSuitMode } from '@mumscards/game-spider';
 import { useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -86,17 +87,64 @@ const spiderSuitModes: Array<{
   },
 ];
 
+const freeCellTableauBuildModes: Array<{
+  value: FreeCellTableauBuildPolicy;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'any',
+    label: 'Any',
+    description: 'Allow any suit/color if rank descends by one.',
+  },
+  {
+    value: 'alternate-red-black',
+    label: 'Alternate Red/Black',
+    description: 'Require alternating colors for tableau builds.',
+  },
+  {
+    value: 'suit-matching',
+    label: 'Suit matching',
+    description: 'Require matching suits for tableau builds.',
+  },
+];
+
+const debugModes: Array<{ value: boolean; label: string; description: string }> = [
+  {
+    value: true,
+    label: 'On',
+    description: 'Show debug-only controls like Save/Load snapshots.',
+  },
+  {
+    value: false,
+    label: 'Off',
+    description: 'Hide debug-only controls.',
+  },
+];
+
 export function SettingsScreen() {
   const params = useLocalSearchParams<{ game?: string }>();
   const { settings, updateSettings } = useAppModel();
-  const game = params.game === 'spider' ? 'spider' : 'klondike';
+  const game = params.game === 'spider'
+    ? 'spider'
+    : params.game === 'freecell'
+      ? 'freecell'
+      : params.game === 'pyramid'
+        ? 'pyramid'
+      : 'klondike';
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.container}>
           <Text style={styles.heading}>
-            {game === 'spider' ? 'Spider settings' : 'Klondike settings'}
+            {game === 'spider'
+              ? 'Spider settings'
+              : game === 'freecell'
+                ? 'FreeCell settings'
+                : game === 'pyramid'
+                  ? 'Pyramid settings'
+                : 'Klondike settings'}
           </Text>
           <Text style={styles.subheading}>Rule toggles apply to new games.</Text>
 
@@ -111,6 +159,124 @@ export function SettingsScreen() {
                     accessibilityRole="button"
                     key={mode.value}
                     onPress={() => void updateSettings({ spiderSuitMode: mode.value })}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                      {mode.label}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, active && styles.optionDescriptionActive]}
+                    >
+                      {mode.description}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+
+              <Text style={styles.sectionHeading}>Debug tools</Text>
+              {debugModes.map((mode) => {
+                const active = settings.spiderDebugTools === mode.value;
+
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={`spider-debug-${String(mode.value)}`}
+                    onPress={() => void updateSettings({ spiderDebugTools: mode.value })}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                      {mode.label}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, active && styles.optionDescriptionActive]}
+                    >
+                      {mode.description}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </>
+          ) : game === 'freecell' ? (
+            <>
+              <Text style={styles.sectionHeading}>FreeCell</Text>
+              {freeCellTableauBuildModes.map((mode) => {
+                const active = settings.freeCellTableauBuildPolicy === mode.value;
+
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={mode.value}
+                    onPress={() => void updateSettings({ freeCellTableauBuildPolicy: mode.value })}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                      {mode.label}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, active && styles.optionDescriptionActive]}
+                    >
+                      {mode.description}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+
+              <Text style={styles.sectionHeading}>Debug tools</Text>
+              {debugModes.map((mode) => {
+                const active = settings.freeCellDebugTools === mode.value;
+
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={`freecell-debug-${String(mode.value)}`}
+                    onPress={() => void updateSettings({ freeCellDebugTools: mode.value })}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                      {mode.label}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, active && styles.optionDescriptionActive]}
+                    >
+                      {mode.description}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </>
+          ) : game === 'pyramid' ? (
+            <>
+              <Text style={styles.sectionHeading}>Pyramid</Text>
+              <Text style={styles.subheading}>
+                Draw one from stock, remove exposed cards that total 13, and recycle up to three
+                passes.
+              </Text>
+
+              <Text style={styles.sectionHeading}>Debug tools</Text>
+              {debugModes.map((mode) => {
+                const active = settings.pyramidDebugTools === mode.value;
+
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={`pyramid-debug-${String(mode.value)}`}
+                    onPress={() => void updateSettings({ pyramidDebugTools: mode.value })}
                     style={({ pressed }) => [
                       styles.option,
                       active && styles.optionActive,
@@ -194,6 +360,33 @@ export function SettingsScreen() {
                     accessibilityRole="button"
                     key={mode.value}
                     onPress={() => void updateSettings({ emptyTableauPolicy: mode.value })}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                      {mode.label}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, active && styles.optionDescriptionActive]}
+                    >
+                      {mode.description}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+
+              <Text style={styles.sectionHeading}>Debug tools</Text>
+              {debugModes.map((mode) => {
+                const active = settings.klondikeDebugTools === mode.value;
+
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={`klondike-debug-${String(mode.value)}`}
+                    onPress={() => void updateSettings({ klondikeDebugTools: mode.value })}
                     style={({ pressed }) => [
                       styles.option,
                       active && styles.optionActive,

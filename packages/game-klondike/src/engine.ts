@@ -237,17 +237,28 @@ export function getHint(
   mode: KlondikeHintMode = 'balanced',
   options?: KlondikeRuleOptions,
 ): KlondikeHint | null {
-  const moves = getLegalMoves(state, options).map((move) => scoreMove(state, move, mode));
-  const best = moves.sort((left, right) => right.score - left.score)[0];
+  const hints = getHints(state, mode, options);
+  const best = hints[0];
 
   if (!best) {
     return null;
   }
 
-  return {
-    move: best.move,
-    label: best.label,
-  };
+  return best;
+}
+
+export function getHints(
+  state: KlondikeState,
+  mode: KlondikeHintMode = 'balanced',
+  options?: KlondikeRuleOptions,
+): KlondikeHint[] {
+  return getLegalMoves(state, options)
+    .map((move) => scoreMove(state, move, mode))
+    .sort((left, right) => right.score - left.score)
+    .map((candidate) => ({
+      move: candidate.move,
+      label: candidate.label,
+    }));
 }
 
 export function canAutoComplete(state: KlondikeState, options?: KlondikeRuleOptions): boolean {

@@ -1,6 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
 
+import { FreeCellGameScreen } from '../../src/screens/freecell-game-screen';
 import { KlondikeGameScreen } from '../../src/screens/klondike-game-screen';
+import { PyramidGameScreen } from '../../src/screens/pyramid-game-screen';
 import { SpiderGameScreen } from '../../src/screens/spider-game-screen';
 
 export default function GameRoute() {
@@ -10,6 +12,14 @@ export default function GameRoute() {
 
   if (gameId === 'spider') {
     return <SpiderGameScreen mode={mode} />;
+  }
+
+  if (gameId === 'freecell') {
+    return <FreeCellGameScreen mode={mode} />;
+  }
+
+  if (gameId === 'pyramid') {
+    return <PyramidGameScreen mode={mode} />;
   }
 
   return (

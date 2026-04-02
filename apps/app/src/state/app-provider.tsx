@@ -78,6 +78,11 @@ async function ensureHydrated() {
         settings: {
           ...defaultSettings,
           ...loadedSettings,
+          freeCellTableauBuildPolicy:
+            loadedSettings.freeCellTableauBuildPolicy === 'red-black'
+              ? 'alternate-red-black'
+              : (loadedSettings.freeCellTableauBuildPolicy ??
+                defaultSettings.freeCellTableauBuildPolicy),
         },
         saves: {
           ...defaultSavedGames,

@@ -41,6 +41,7 @@ export function SpiderGameScreen({ mode }: Props) {
     pileIndex: number;
     cardIndex: number;
   } | null>(null);
+  const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const availableWidth = Math.max(320, width - spacing.lg * 2);
@@ -59,6 +60,7 @@ export function SpiderGameScreen({ mode }: Props) {
       ),
     );
     setSelectedSource(null);
+    setGameMenuOpen(false);
     setExpandedTableauPile(null);
     setSnapshotPickerOpen(false);
   }, [mode, settings.spiderSuitMode]);
@@ -71,6 +73,7 @@ export function SpiderGameScreen({ mode }: Props) {
     resumeRestoredRef.current = true;
     setHistory(createSpiderHistoryState(savedGame.state));
     setSelectedSource(null);
+    setGameMenuOpen(false);
     setExpandedTableauPile(null);
     setSnapshotPickerOpen(false);
   }, [hydrated, mode, savedGame]);
@@ -100,6 +103,7 @@ export function SpiderGameScreen({ mode }: Props) {
       future: [],
     }));
     setSelectedSource(null);
+    setGameMenuOpen(false);
     setExpandedTableauPile(null);
     setSnapshotPickerOpen(false);
   }
@@ -109,6 +113,7 @@ export function SpiderGameScreen({ mode }: Props) {
       createSpiderHistoryState(createSpiderGame(Math.random, { suitMode: settings.spiderSuitMode })),
     );
     setSelectedSource(null);
+    setGameMenuOpen(false);
     setExpandedTableauPile(null);
     setSnapshotPickerOpen(false);
   }
@@ -128,6 +133,27 @@ export function SpiderGameScreen({ mode }: Props) {
       };
     });
     setSelectedSource(null);
+    setGameMenuOpen(false);
+    setExpandedTableauPile(null);
+    setSnapshotPickerOpen(false);
+  }
+
+  function redo() {
+    setHistory((current) => {
+      const next = current.future[0];
+
+      if (!next) {
+        return current;
+      }
+
+      return {
+        past: [...current.past, current.present].slice(-50),
+        present: next,
+        future: current.future.slice(1),
+      };
+    });
+    setSelectedSource(null);
+    setGameMenuOpen(false);
     setExpandedTableauPile(null);
     setSnapshotPickerOpen(false);
   }
@@ -223,25 +249,63 @@ export function SpiderGameScreen({ mode }: Props) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.screen}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push('/')}
-          style={({ pressed }) => [styles.floatingBackButton, pressed && styles.buttonPressed]}
-        >
-          <Text style={styles.floatingBackButtonText}>{'< index'}</Text>
-        </Pressable>
-
-        <View style={styles.floatingGameSwitch}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.replace('/game/klondike?mode=new')}
-            style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
-          >
-            <Text style={styles.switchButtonText}>Klondike</Text>
-          </Pressable>
-          <View style={[styles.switchButton, styles.switchButtonActive]}>
-            <Text style={styles.switchButtonTextActive}>Spider</Text>
+        <View style={styles.floatingNavWrap}>
+          <View style={styles.floatingNavRow}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setGameMenuOpen((current) => !current)}
+              style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.switchButtonText}>Games ▾</Text>
+            </Pressable>
           </View>
+          {gameMenuOpen ? (
+            <View style={styles.floatingGameMenu}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
+                  router.replace('/game/freecell?mode=new');
+                }}
+                style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
+              >
+                <Text style={styles.switchButtonText}>FreeCell</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
+                  router.replace('/game/klondike?mode=new');
+                }}
+                style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
+              >
+                <Text style={styles.switchButtonText}>Klondike</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
+                  router.replace('/game/pyramid?mode=new');
+                }}
+                style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
+              >
+                <Text style={styles.switchButtonText}>Pyramid</Text>
+              </Pressable>
+              <View style={[styles.switchButton, styles.switchButtonActive]}>
+                <Text style={styles.switchButtonTextActive}>Spider</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
+                  router.push('/');
+                }}
+                style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
+              >
+                <Text style={styles.switchButtonText}>{'< home'}</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -253,25 +317,29 @@ export function SpiderGameScreen({ mode }: Props) {
             >
               <Text style={styles.switchButtonText}>New</Text>
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={saveCurrentState}
-              style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
-            >
-              <Text style={styles.switchButtonText}>Save</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={snapshots.spider.length === 0}
-              onPress={() => setSnapshotPickerOpen((current) => !current)}
-              style={({ pressed }) => [
-                styles.switchButton,
-                snapshots.spider.length === 0 && styles.switchButtonDisabled,
-                pressed && snapshots.spider.length > 0 && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.switchButtonText}>Load</Text>
-            </Pressable>
+            {settings.spiderDebugTools ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={saveCurrentState}
+                style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
+              >
+                <Text style={styles.switchButtonText}>Save</Text>
+              </Pressable>
+            ) : null}
+            {settings.spiderDebugTools ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={snapshots.spider.length === 0}
+                onPress={() => setSnapshotPickerOpen((current) => !current)}
+                style={({ pressed }) => [
+                  styles.switchButton,
+                  snapshots.spider.length === 0 && styles.switchButtonDisabled,
+                  pressed && snapshots.spider.length > 0 && styles.buttonPressed,
+                ]}
+              >
+                <Text style={styles.switchButtonText}>Load</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               disabled={history.past.length === 0}
@@ -286,6 +354,18 @@ export function SpiderGameScreen({ mode }: Props) {
             </Pressable>
             <Pressable
               accessibilityRole="button"
+              disabled={history.future.length === 0}
+              onPress={redo}
+              style={({ pressed }) => [
+                styles.switchButton,
+                history.future.length === 0 && styles.switchButtonDisabled,
+                pressed && history.future.length > 0 && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.switchButtonText}>Redo</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
               onPress={() => router.push('/settings?game=spider')}
               style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
             >
@@ -297,7 +377,7 @@ export function SpiderGameScreen({ mode }: Props) {
             Spider ({suitModeLabel})
           </Text>
           {won ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
-          {snapshotPickerOpen ? (
+          {settings.spiderDebugTools && snapshotPickerOpen ? (
             <View style={styles.snapshotPanel}>
               {snapshots.spider.map((snapshot) => (
                 <View key={snapshot.id} style={styles.snapshotRow}>
@@ -431,30 +511,26 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     gap: spacing.md,
   },
-  floatingBackButton: {
-    position: 'absolute',
-    top: spacing.sm,
-    left: spacing.md,
-    zIndex: 40,
-    elevation: 8,
-    backgroundColor: palette.paper,
-    borderRadius: 999,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+  floatingNavRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
-  floatingBackButtonText: {
-    color: palette.ink,
-    fontSize: typography.subtitle,
-    fontWeight: '700',
-  },
-  floatingGameSwitch: {
+  floatingNavWrap: {
     position: 'absolute',
     top: spacing.sm,
     right: spacing.md,
     zIndex: 40,
     elevation: 8,
-    flexDirection: 'row',
-    gap: spacing.sm,
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+  },
+  floatingGameMenu: {
+    flexDirection: 'column',
+    gap: spacing.xs,
+    alignItems: 'flex-end',
+    backgroundColor: 'rgba(8, 25, 19, 0.18)',
+    borderRadius: radius.md,
+    padding: spacing.xs,
   },
   switchRow: {
     flexDirection: 'row',

@@ -6,7 +6,7 @@ import {
   canAutoComplete,
   createKlondikeGame,
   drawFromStock,
-  getHint,
+  getHints,
   getLegalMoves,
   recycleWaste,
   runAutoComplete,
@@ -94,6 +94,8 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   const [selectedSource, setSelectedSource] = useState<KlondikeSource | null>(null);
   const [selectedAtMs, setSelectedAtMs] = useState<number | null>(null);
   const [hintText, setHintText] = useState<string | null>(null);
+  const [hintCycleIndex, setHintCycleIndex] = useState(0);
+  const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [offloadActive, setOffloadActive] = useState(false);
   const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
@@ -300,6 +302,8 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     setSelectedSource(null);
     setSelectedAtMs(null);
     setHintText(null);
+    setHintCycleIndex(0);
+    setGameMenuOpen(false);
     setDragState(null);
     setExpandedTableauPile(null);
     setSnapshotPickerOpen(false);
@@ -386,10 +390,19 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   }
 
   function showHint() {
-    const hint = getHint(history.present, settings.hintMode, {
+    const hints = getHints(history.present, settings.hintMode, {
       emptyTableauPolicy: settings.emptyTableauPolicy,
     });
-    setHintText(hint ? hint.label : 'No legal move found.');
+
+    if (hints.length === 0) {
+      setHintText('No legal move found.');
+      setHintCycleIndex(0);
+      return;
+    }
+
+    const index = hintCycleIndex % hints.length;
+    setHintText(hints[index].label);
+    setHintCycleIndex((current) => (current + 1) % hints.length);
   }
 
   function handleMove(source: KlondikeSource, destination: KlondikeDestination) {
@@ -597,17 +610,18 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   const content = (
     <>
       <View style={[styles.boardHeader, orientation === 'landscape' && styles.boardHeaderLandscape]}>
-        <View style={styles.statusChip}>
-          <Text style={styles.statusLabel}>{gameId}</Text>
-        </View>
         <View style={styles.headerActions}>
           <ActionButton label="New" onPress={startNewGame} />
-          <ActionButton label="Save" onPress={saveCurrentState} />
-          <ActionButton
-            label="Load"
-            onPress={() => setSnapshotPickerOpen((current) => !current)}
-            disabled={snapshots.klondike.length === 0}
-          />
+          {settings.klondikeDebugTools ? (
+            <ActionButton label="Save" onPress={saveCurrentState} />
+          ) : null}
+          {settings.klondikeDebugTools ? (
+            <ActionButton
+              label="Load"
+              onPress={() => setSnapshotPickerOpen((current) => !current)}
+              disabled={snapshots.klondike.length === 0}
+            />
+          ) : null}
           <ActionButton label="Draw" onPress={draw} />
           <ActionButton
             disabled={
@@ -635,7 +649,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
         </View>
       </View>
 
-      {snapshotPickerOpen ? (
+      {settings.klondikeDebugTools && snapshotPickerOpen ? (
         <View style={styles.snapshotPanel}>
           {snapshots.klondike.map((snapshot) => (
             <View key={snapshot.id} style={styles.snapshotRow}>
@@ -828,28 +842,63 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View onLayout={measureRoot} ref={rootRef} style={styles.screen}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push('/')}
-          style={({ pressed }) => [
-            styles.floatingBackButton,
-            pressed && styles.actionButtonPressed,
-          ]}
-        >
-          <Text style={styles.floatingBackButtonText}>{'< index'}</Text>
-        </Pressable>
-
-        <View style={styles.floatingGameSwitch}>
-          <View style={[styles.gameSwitchButton, styles.gameSwitchButtonActive]}>
-            <Text style={styles.gameSwitchButtonTextActive}>Klondike</Text>
+        <View style={styles.floatingNavWrap}>
+          <View style={styles.floatingNavRow}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setGameMenuOpen((current) => !current)}
+              style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
+            >
+              <Text style={styles.gameSwitchButtonText}>Games ▾</Text>
+            </Pressable>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.replace('/game/spider?mode=new')}
-            style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
-          >
-            <Text style={styles.gameSwitchButtonText}>Spider</Text>
-          </Pressable>
+          {gameMenuOpen ? (
+            <View style={styles.floatingGameMenu}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
+                  router.replace('/game/freecell?mode=new');
+                }}
+                style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
+              >
+                <Text style={styles.gameSwitchButtonText}>FreeCell</Text>
+              </Pressable>
+              <View style={[styles.gameSwitchButton, styles.gameSwitchButtonActive]}>
+                <Text style={styles.gameSwitchButtonTextActive}>Klondike</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
+                  router.replace('/game/pyramid?mode=new');
+                }}
+                style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
+              >
+                <Text style={styles.gameSwitchButtonText}>Pyramid</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
+                  router.replace('/game/spider?mode=new');
+                }}
+                style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
+              >
+                <Text style={styles.gameSwitchButtonText}>Spider</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
+                  router.push('/');
+                }}
+                style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
+              >
+                <Text style={styles.gameSwitchButtonText}>{'< home'}</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} nestedScrollEnabled>
@@ -1133,30 +1182,26 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     gap: spacing.md,
   },
-  floatingBackButton: {
-    position: 'absolute',
-    top: spacing.sm,
-    left: spacing.md,
-    zIndex: 40,
-    elevation: 8,
-    backgroundColor: palette.paper,
-    borderRadius: 999,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  floatingBackButtonText: {
-    color: palette.ink,
-    fontSize: typography.subtitle,
-    fontWeight: '700',
-  },
-  floatingGameSwitch: {
+  floatingNavWrap: {
     position: 'absolute',
     top: spacing.sm,
     right: spacing.md,
     zIndex: 40,
     elevation: 8,
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+  },
+  floatingNavRow: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  floatingGameMenu: {
+    flexDirection: 'column',
+    gap: spacing.xs,
+    alignItems: 'flex-end',
+    backgroundColor: 'rgba(8, 25, 19, 0.18)',
+    borderRadius: radius.md,
+    padding: spacing.xs,
   },
   horizontalBoardContent: {
     paddingBottom: spacing.sm,

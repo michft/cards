@@ -16,6 +16,9 @@ vi.mock('../src/state/app-provider', () => ({
     hydrated: true,
     saves: {
       klondike: null,
+      freecell: null,
+      pyramid: null,
+      spider: null,
     },
   }),
 }));

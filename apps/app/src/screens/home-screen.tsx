@@ -32,6 +32,22 @@ export function HomeScreen() {
 
           <Pressable
             accessibilityRole="button"
+            onPress={() => router.push('/game/freecell?mode=new')}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
+          >
+            <Text style={styles.secondaryButtonText}>New FreeCell</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/game/pyramid?mode=new')}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
+          >
+            <Text style={styles.secondaryButtonText}>New Pyramid</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
             disabled={!canContinue}
             onPress={() => router.push('/game/klondike?mode=resume')}
             style={({ pressed }) => [
