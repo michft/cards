@@ -26,6 +26,9 @@ importers:
       '@mumscards/game-klondike':
         specifier: workspace:*
         version: link:../../packages/game-klondike
+      '@mumscards/game-spider':
+        specifier: workspace:*
+        version: link:../../packages/game-spider
       '@mumscards/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -110,6 +113,19 @@ importers:
         version: 3.2.4(@types/node@25.5.0)(jsdom@29.0.1)(lightningcss@1.32.0)(terser@5.46.1)(yaml@2.8.3)
 
   packages/game-klondike:
+    dependencies:
+      '@mumscards/engine-core':
+        specifier: workspace:*
+        version: link:../engine-core
+    devDependencies:
+      typescript:
+        specifier: ~5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@25.5.0)(jsdom@29.0.1)(lightningcss@1.32.0)(terser@5.46.1)(yaml@2.8.3)
+
+  packages/game-spider:
     dependencies:
       '@mumscards/engine-core':
         specifier: workspace:*

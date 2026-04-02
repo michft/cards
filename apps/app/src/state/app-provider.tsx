@@ -1,32 +1,43 @@
 import type { PersistedGameEnvelope } from '@mumscards/engine-core';
-import type { KlondikeState } from '@mumscards/game-klondike';
 import { loadJson, saveJson } from '@mumscards/storage';
 import { useEffect, useSyncExternalStore } from 'react';
 
 import {
   defaultSavedGames,
+  defaultSavedSnapshots,
   defaultSettings,
   type AppSettings,
+  type GameStateMap,
   type GameVariant,
   type SavedGames,
+  type SavedSnapshots,
 } from './types';
 import { storageAdapter } from './storage-adapter';
 
 const SETTINGS_KEY = 'mumscards.settings';
 const SAVES_KEY = 'mumscards.saves';
+const SNAPSHOTS_KEY = 'mumscards.snapshots';
+const SNAPSHOT_LIMIT = 20;
 
 type AppSnapshot = {
   hydrated: boolean;
   settings: AppSettings;
   saves: SavedGames;
+  snapshots: SavedSnapshots;
 };
 
 type AppModelValue = AppSnapshot & {
   updateSettings(patch: Partial<AppSettings>): Promise<void>;
-  saveGame(
-    variant: GameVariant,
-    envelope: PersistedGameEnvelope<KlondikeState>,
+  saveGame<Variant extends GameVariant>(
+    variant: Variant,
+    envelope: PersistedGameEnvelope<GameStateMap[Variant]>,
   ): Promise<void>;
+  saveSnapshot<Variant extends GameVariant>(
+    variant: Variant,
+    envelope: PersistedGameEnvelope<GameStateMap[Variant]>,
+    label?: string,
+  ): Promise<void>;
+  deleteSnapshot(variant: GameVariant, snapshotId: string): Promise<void>;
   clearGame(variant: GameVariant): Promise<void>;
 };
 
@@ -34,6 +45,7 @@ let snapshot: AppSnapshot = {
   hydrated: false,
   settings: defaultSettings,
   saves: defaultSavedGames,
+  snapshots: defaultSavedSnapshots,
 };
 
 let hydratePromise: Promise<void> | null = null;
@@ -55,9 +67,10 @@ async function ensureHydrated() {
 
   if (!hydratePromise) {
     hydratePromise = (async () => {
-      const [loadedSettings, loadedSaves] = await Promise.all([
+      const [loadedSettings, loadedSaves, loadedSnapshots] = await Promise.all([
         loadJson(storageAdapter, SETTINGS_KEY, defaultSettings),
         loadJson(storageAdapter, SAVES_KEY, defaultSavedGames),
+        loadJson(storageAdapter, SNAPSHOTS_KEY, defaultSavedSnapshots),
       ]);
 
       setSnapshot({
@@ -69,6 +82,10 @@ async function ensureHydrated() {
         saves: {
           ...defaultSavedGames,
           ...loadedSaves,
+        },
+        snapshots: {
+          ...defaultSavedSnapshots,
+          ...loadedSnapshots,
         },
       });
     })().finally(() => {
@@ -103,9 +120,9 @@ async function updateSettings(patch: Partial<AppSettings>) {
   await saveJson(storageAdapter, SETTINGS_KEY, nextSettings);
 }
 
-async function saveGame(
-  variant: GameVariant,
-  envelope: PersistedGameEnvelope<KlondikeState>,
+async function saveGame<Variant extends GameVariant>(
+  variant: Variant,
+  envelope: PersistedGameEnvelope<GameStateMap[Variant]>,
 ) {
   const nextSaves = {
     ...snapshot.saves,
@@ -117,6 +134,52 @@ async function saveGame(
     saves: nextSaves,
   });
   await saveJson(storageAdapter, SAVES_KEY, nextSaves);
+}
+
+function createSnapshotId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function createSnapshotLabel(updatedAt: string) {
+  const date = new Date(updatedAt);
+  return date.toLocaleString();
+}
+
+async function saveSnapshot<Variant extends GameVariant>(
+  variant: Variant,
+  envelope: PersistedGameEnvelope<GameStateMap[Variant]>,
+  label?: string,
+) {
+  const nextSnapshots = {
+    ...snapshot.snapshots,
+    [variant]: [
+      {
+        ...envelope,
+        id: createSnapshotId(),
+        label: label?.trim() || createSnapshotLabel(envelope.updatedAt),
+      },
+      ...snapshot.snapshots[variant],
+    ].slice(0, SNAPSHOT_LIMIT),
+  } as SavedSnapshots;
+
+  setSnapshot({
+    ...snapshot,
+    snapshots: nextSnapshots,
+  });
+  await saveJson(storageAdapter, SNAPSHOTS_KEY, nextSnapshots);
+}
+
+async function deleteSnapshot(variant: GameVariant, snapshotId: string) {
+  const nextSnapshots = {
+    ...snapshot.snapshots,
+    [variant]: snapshot.snapshots[variant].filter((entry) => entry.id !== snapshotId),
+  } as SavedSnapshots;
+
+  setSnapshot({
+    ...snapshot,
+    snapshots: nextSnapshots,
+  });
+  await saveJson(storageAdapter, SNAPSHOTS_KEY, nextSnapshots);
 }
 
 async function clearGame(variant: GameVariant) {
@@ -143,6 +206,8 @@ export function useAppModel(): AppModelValue {
     ...current,
     updateSettings,
     saveGame,
+    saveSnapshot,
+    deleteSnapshot,
     clearGame,
   };
 }

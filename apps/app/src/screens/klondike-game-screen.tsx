@@ -11,6 +11,7 @@ import {
   recycleWaste,
   runAutoComplete,
   type KlondikeDestination,
+  type KlondikeMove,
   type KlondikeSource,
   type KlondikeState,
   type KlondikeTableauCard,
@@ -40,6 +41,17 @@ type HistoryState = {
 };
 
 type DragCard = KlondikeTableauCard;
+type TableauToTableauMove = Extract<KlondikeMove, { kind: 'move' }> & {
+  source: {
+    zone: 'tableau';
+    pileIndex: number;
+    cardIndex: number;
+  };
+  destination: {
+    zone: 'tableau';
+    pileIndex: number;
+  };
+};
 
 type DragState = {
   source: KlondikeSource;
@@ -69,7 +81,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   const { height, width } = useWindowDimensions();
   const router = useRouter();
   const orientation = width > height ? 'landscape' : 'portrait';
-  const { hydrated, saves, saveGame, clearGame, settings } = useAppModel();
+  const { hydrated, saves, saveGame, clearGame, settings, snapshots, saveSnapshot, deleteSnapshot } = useAppModel();
   const savedGame = saves.klondike;
   const resumeRestoredRef = useRef(false);
   const createNewGame = useCallback(
@@ -85,10 +97,18 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [offloadActive, setOffloadActive] = useState(false);
   const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
+  const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const [zoneMeasurements, setZoneMeasurements] = useState<Record<string, ZoneMeasurement>>({});
   const [rootOffset, setRootOffset] = useState({ x: 0, y: 0 });
   const zoneRefs = useRef<Record<string, RNView | null>>({});
   const rootRef = useRef<RNView | null>(null);
+  const keyActionRef = useRef({
+    undo: () => {},
+    redo: () => {},
+    showHint: () => {},
+    draw: () => {},
+    startNewGame: () => {},
+  });
 
   useEffect(() => {
     resumeRestoredRef.current = false;
@@ -137,37 +157,43 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 
       if (event.key.toLowerCase() === 'u') {
         event.preventDefault();
-        undo();
+        keyActionRef.current.undo();
       }
 
       if (event.key.toLowerCase() === 'r') {
         event.preventDefault();
-        redo();
+        keyActionRef.current.redo();
       }
 
       if (event.key.toLowerCase() === 'h') {
         event.preventDefault();
-        showHint();
+        keyActionRef.current.showHint();
       }
 
       if (event.key.toLowerCase() === 'd') {
         event.preventDefault();
-        draw();
+        keyActionRef.current.draw();
       }
 
       if (event.key.toLowerCase() === 'n') {
         event.preventDefault();
-        startNewGame();
+        keyActionRef.current.startNewGame();
       }
     };
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  });
+  }, []);
 
   const measureRoot = useCallback(() => {
     rootRef.current?.measureInWindow((x, y) => {
-      setRootOffset({ x, y });
+      setRootOffset((current) => {
+        if (current.x === x && current.y === y) {
+          return current;
+        }
+
+        return { x, y };
+      });
     });
   }, []);
 
@@ -180,16 +206,32 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     }
 
     node.measureInWindow((x, y, widthValue, heightValue) => {
-      setZoneMeasurements((current) => ({
-        ...current,
-        [zoneKey]: {
-          destination,
-          x,
-          y,
-          width: widthValue,
-          height: heightValue,
-        },
-      }));
+      setZoneMeasurements((current) => {
+        const existing = current[zoneKey];
+
+        if (
+          existing &&
+          existing.destination.zone === destination.zone &&
+          existing.destination.pileIndex === destination.pileIndex &&
+          existing.x === x &&
+          existing.y === y &&
+          existing.width === widthValue &&
+          existing.height === heightValue
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [zoneKey]: {
+            destination,
+            x,
+            y,
+            width: widthValue,
+            height: heightValue,
+          },
+        };
+      });
     });
   }, []);
 
@@ -260,6 +302,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     setHintText(null);
     setDragState(null);
     setExpandedTableauPile(null);
+    setSnapshotPickerOpen(false);
   }
 
   function commit(next: KlondikeState) {
@@ -274,6 +317,20 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   function startNewGame() {
     setOffloadActive(false);
     setHistory(createHistoryState(createNewGame()));
+    clearInteractionState();
+  }
+
+  function saveCurrentState() {
+    const envelope: PersistedGameEnvelope<KlondikeState> = {
+      gameId: 'klondike',
+      updatedAt: new Date().toISOString(),
+      state: history.present,
+    };
+    void saveSnapshot('klondike', envelope);
+  }
+
+  function loadSnapshot(snapshot: PersistedGameEnvelope<KlondikeState>) {
+    setHistory(createHistoryState(snapshot.state));
     clearInteractionState();
   }
 
@@ -337,11 +394,17 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 
   function handleMove(source: KlondikeSource, destination: KlondikeDestination) {
     setOffloadActive(false);
+    const resolvedSource = resolvePreferredSourceForDestination(
+      history.present,
+      source,
+      destination,
+      settings.emptyTableauPolicy,
+    );
     const next = applyKlondikeMove(
       history.present,
       {
         kind: 'move',
-        source,
+        source: resolvedSource,
         destination,
       },
       { emptyTableauPolicy: settings.emptyTableauPolicy },
@@ -495,6 +558,14 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     setOffloadActive(true);
   }
 
+  keyActionRef.current = {
+    undo,
+    redo,
+    showHint,
+    draw,
+    startNewGame,
+  };
+
   const highlightedDestinations = useMemo(() => {
     if (dragState) {
       return dragState.legalDestinations;
@@ -515,9 +586,11 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   const cardWidth = orientation === 'landscape'
     ? Math.max(66, Math.min(96, availableWidth / 10.8))
     : Math.max(48, Math.min(74, availableWidth / 8.2));
-  const wasteWidth = Math.round(cardWidth * 1.6);
+  const wasteOffset = Math.max(18, Math.round(cardWidth * 0.42));
+  const wasteStackWidth = cardWidth + wasteOffset * 2;
+  const wasteZoneWidth = wasteStackWidth + spacing.xs * 2;
   const rowGap = spacing.sm;
-  const topRowWidth = cardWidth * 5 + wasteWidth + rowGap * 5;
+  const topRowWidth = cardWidth * 5 + wasteZoneWidth + rowGap * 5;
   const tableauRowWidth = cardWidth * 7 + rowGap * 6;
   const boardMinWidth = Math.max(topRowWidth, tableauRowWidth);
 
@@ -529,6 +602,12 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
         </View>
         <View style={styles.headerActions}>
           <ActionButton label="New" onPress={startNewGame} />
+          <ActionButton label="Save" onPress={saveCurrentState} />
+          <ActionButton
+            label="Load"
+            onPress={() => setSnapshotPickerOpen((current) => !current)}
+            disabled={snapshots.klondike.length === 0}
+          />
           <ActionButton label="Draw" onPress={draw} />
           <ActionButton
             disabled={
@@ -544,7 +623,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
           <Pressable
             accessibilityLabel="Open settings"
             accessibilityRole="button"
-            onPress={() => router.push('/settings')}
+            onPress={() => router.push('/settings?game=klondike')}
             style={({ pressed }) => [
               styles.actionButton,
               styles.actionIconButton,
@@ -555,6 +634,39 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
           </Pressable>
         </View>
       </View>
+
+      {snapshotPickerOpen ? (
+        <View style={styles.snapshotPanel}>
+          {snapshots.klondike.map((snapshot) => (
+            <View key={snapshot.id} style={styles.snapshotRow}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => loadSnapshot(snapshot)}
+                style={({ pressed }) => [
+                  styles.snapshotLoadButton,
+                  pressed && styles.actionButtonPressed,
+                ]}
+              >
+                <Text style={styles.snapshotText}>{snapshot.label}</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  if (snapshot.id) {
+                    void deleteSnapshot('klondike', snapshot.id);
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.snapshotDeleteButton,
+                  pressed && styles.actionButtonPressed,
+                ]}
+              >
+                <Ionicons color={palette.ink} name="trash-outline" size={16} />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       {hintText ? <Text style={styles.hintText}>{hintText}</Text> : null}
       {history.present.completed ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
@@ -580,7 +692,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
             />
           </Zone>
 
-          <Zone width={wasteWidth}>
+          <Zone width={wasteZoneWidth}>
             <CardStack
               cardWidth={cardWidth}
               cards={history.present.waste.slice(-3).map((card) => ({ ...card, faceUp: true }))}
@@ -716,6 +828,30 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View onLayout={measureRoot} ref={rootRef} style={styles.screen}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/')}
+          style={({ pressed }) => [
+            styles.floatingBackButton,
+            pressed && styles.actionButtonPressed,
+          ]}
+        >
+          <Text style={styles.floatingBackButtonText}>{'< index'}</Text>
+        </Pressable>
+
+        <View style={styles.floatingGameSwitch}>
+          <View style={[styles.gameSwitchButton, styles.gameSwitchButtonActive]}>
+            <Text style={styles.gameSwitchButtonTextActive}>Klondike</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace('/game/spider?mode=new')}
+            style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
+          >
+            <Text style={styles.gameSwitchButtonText}>Spider</Text>
+          </Pressable>
+        </View>
+
         <ScrollView contentContainerStyle={styles.scrollContent} nestedScrollEnabled>
           {content}
         </ScrollView>
@@ -784,6 +920,34 @@ function getLegalDestinations(
     seen.add(key);
     return [move.destination];
   });
+}
+
+function resolvePreferredSourceForDestination(
+  state: KlondikeState,
+  source: KlondikeSource,
+  destination: KlondikeDestination,
+  emptyTableauPolicy: 'any' | 'king-only',
+): KlondikeSource {
+  if (source.zone !== 'tableau' || destination.zone !== 'tableau') {
+    return source;
+  }
+
+  if (state.tableau[destination.pileIndex]?.length !== 0) {
+    return source;
+  }
+
+  const bestMove = getLegalMoves(state, { emptyTableauPolicy })
+    .filter(
+      (move): move is TableauToTableauMove =>
+        move.kind === 'move' &&
+        move.source.zone === 'tableau' &&
+        move.destination.zone === 'tableau' &&
+        move.source.pileIndex === source.pileIndex &&
+        move.destination.pileIndex === destination.pileIndex,
+    )
+    .sort((left, right) => left.source.cardIndex - right.source.cardIndex)[0];
+
+  return bestMove ? bestMove.source : source;
 }
 
 function getDragCards(state: KlondikeState, source: KlondikeSource): DragCard[] {
@@ -964,8 +1128,35 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: spacing.md,
+    paddingTop: spacing.xl + spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
     gap: spacing.md,
+  },
+  floatingBackButton: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.md,
+    zIndex: 40,
+    elevation: 8,
+    backgroundColor: palette.paper,
+    borderRadius: 999,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  floatingBackButtonText: {
+    color: palette.ink,
+    fontSize: typography.subtitle,
+    fontWeight: '700',
+  },
+  floatingGameSwitch: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.md,
+    zIndex: 40,
+    elevation: 8,
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   horizontalBoardContent: {
     paddingBottom: spacing.sm,
@@ -999,6 +1190,29 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
+  gameSwitchRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  gameSwitchButton: {
+    backgroundColor: palette.paper,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  gameSwitchButtonActive: {
+    backgroundColor: palette.accent,
+  },
+  gameSwitchButtonText: {
+    color: palette.ink,
+    fontSize: typography.body,
+    fontWeight: '600',
+  },
+  gameSwitchButtonTextActive: {
+    color: palette.ink,
+    fontSize: typography.body,
+    fontWeight: '700',
+  },
   actionButton: {
     backgroundColor: palette.paper,
     borderRadius: radius.md,
@@ -1018,6 +1232,38 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   actionButtonText: {
+    color: palette.ink,
+    fontSize: typography.body,
+    fontWeight: '600',
+  },
+  snapshotPanel: {
+    backgroundColor: palette.paper,
+    borderRadius: radius.md,
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
+  },
+  snapshotRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  snapshotLoadButton: {
+    backgroundColor: '#f2ebdc',
+    borderRadius: radius.sm,
+    flex: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  snapshotDeleteButton: {
+    alignItems: 'center',
+    backgroundColor: '#f2ebdc',
+    borderRadius: radius.sm,
+    justifyContent: 'center',
+    minHeight: 30,
+    minWidth: 30,
+  },
+  snapshotText: {
     color: palette.ink,
     fontSize: typography.body,
     fontWeight: '600',

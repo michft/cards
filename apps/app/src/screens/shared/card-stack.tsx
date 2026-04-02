@@ -6,6 +6,7 @@ import { useMemo, useRef } from 'react';
 import {
   PanResponder,
   type PanResponderGestureState,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -73,11 +74,11 @@ export function CardStack({
   const cardHeight = Math.round(cardWidth * 1.42);
   const hiddenOffset = Math.round(cardHeight * (expanded ? 0.24 : 0.18));
   const faceUpOffset = Math.round(cardHeight * (expanded ? 0.48 : 0.28));
-  const wasteOffset = Math.round(cardWidth * 0.28);
+  const wasteOffset = Math.max(18, Math.round(cardWidth * 0.42));
   const visibleCards = hiddenFromIndex === undefined ? cards : cards.slice(0, hiddenFromIndex);
 
   if (visibleCards.length === 0) {
-    return (
+    const placeholder = (
       <View
         style={[
           emptyState === 'recycle' ? styles.recyclePlaceholder : styles.placeholder,
@@ -89,6 +90,16 @@ export function CardStack({
       >
         <Text style={styles.placeholderText}>{placeholderLabel}</Text>
       </View>
+    );
+
+    if (!onCardPress) {
+      return placeholder;
+    }
+
+    return (
+      <Pressable accessibilityRole="button" onPress={onCardPress}>
+        {placeholder}
+      </Pressable>
     );
   }
 
@@ -353,6 +364,12 @@ function DraggableCardLayer({
 
 function renderFace(card: StackCard, width: number, height: number, selected?: boolean) {
   const rankText = card.rank === 10 && width <= 56 ? 'x' : rankLabel(card.rank);
+  const compact = width <= 56;
+  const compactPadding = compact ? spacing.xs : spacing.sm;
+  const cornerRankSize = compact ? 14 : 18;
+  const leadingSuitSize = compact ? 11 : 14;
+  const centerSuitSize = compact ? 20 : 28;
+  const cornerSuitSize = compact ? 12 : 16;
 
   return (
     <View
@@ -362,24 +379,47 @@ function renderFace(card: StackCard, width: number, height: number, selected?: b
         {
           width,
           height,
+          padding: compactPadding,
         },
       ]}
     >
       <View style={styles.leadingCorner}>
         <Text
           numberOfLines={1}
-          style={[styles.cornerRank, card.color === 'red' ? styles.red : styles.black]}
+          style={[
+            styles.cornerRank,
+            { fontSize: cornerRankSize, lineHeight: cornerRankSize + 1 },
+            card.color === 'red' ? styles.red : styles.black,
+          ]}
         >
           {rankText}
         </Text>
-        <Text style={[styles.leadingSuit, card.color === 'red' ? styles.red : styles.black]}>
+        <Text
+          style={[
+            styles.leadingSuit,
+            { fontSize: leadingSuitSize, lineHeight: leadingSuitSize + 1 },
+            card.color === 'red' ? styles.red : styles.black,
+          ]}
+        >
           {suitSymbols[card.suit]}
         </Text>
       </View>
-      <Text style={[styles.centerSuit, card.color === 'red' ? styles.red : styles.black]}>
+      <Text
+        style={[
+          styles.centerSuit,
+          { fontSize: centerSuitSize, lineHeight: centerSuitSize + 2 },
+          card.color === 'red' ? styles.red : styles.black,
+        ]}
+      >
         {suitSymbols[card.suit]}
       </Text>
-      <Text style={[styles.cornerSuit, card.color === 'red' ? styles.red : styles.black]}>
+      <Text
+        style={[
+          styles.cornerSuit,
+          { fontSize: cornerSuitSize, lineHeight: cornerSuitSize + 1 },
+          card.color === 'red' ? styles.red : styles.black,
+        ]}
+      >
         {suitSymbols[card.suit]}
       </Text>
     </View>
@@ -441,6 +481,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.border,
     padding: spacing.sm,
+    overflow: 'hidden',
     justifyContent: 'space-between',
     boxShadow: '0px 3px 10px rgba(0, 0, 0, 0.14)',
   },

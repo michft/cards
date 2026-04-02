@@ -3,7 +3,9 @@ import type {
   KlondikeEmptyTableauPolicy,
   KlondikeHintMode,
 } from '@mumscards/game-klondike';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { SpiderSuitMode } from '@mumscards/game-spider';
+import { useLocalSearchParams } from 'expo-router';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
@@ -57,85 +59,162 @@ const emptyTableauModes: Array<{
   },
 ];
 
+const spiderSuitModes: Array<{
+  value: SpiderSuitMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'spades-only',
+    label: 'Black only',
+    description: 'Use Spades only.',
+  },
+  {
+    value: 'hearts-only',
+    label: 'Red only',
+    description: 'Use Hearts only.',
+  },
+  {
+    value: 'red-black',
+    label: 'Red/Black',
+    description: 'Use Hearts and Spades.',
+  },
+  {
+    value: 'all-suits',
+    label: '4 suits',
+    description: 'Use Clubs, Diamonds, Hearts, and Spades.',
+  },
+];
+
 export function SettingsScreen() {
+  const params = useLocalSearchParams<{ game?: string }>();
   const { settings, updateSettings } = useAppModel();
+  const game = params.game === 'spider' ? 'spider' : 'klondike';
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <Text style={styles.heading}>Klondike settings</Text>
-        <Text style={styles.subheading}>Rule toggles apply to new games.</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.container}>
+          <Text style={styles.heading}>
+            {game === 'spider' ? 'Spider settings' : 'Klondike settings'}
+          </Text>
+          <Text style={styles.subheading}>Rule toggles apply to new games.</Text>
 
-        <Text style={styles.sectionHeading}>Draw style</Text>
-        {drawModes.map((mode) => {
-          const active = settings.drawCount === mode.value;
+          {game === 'spider' ? (
+            <>
+              <Text style={styles.sectionHeading}>Spider mode</Text>
+              {spiderSuitModes.map((mode) => {
+                const active = settings.spiderSuitMode === mode.value;
 
-          return (
-            <Pressable
-              accessibilityRole="button"
-              key={mode.value}
-              onPress={() => void updateSettings({ drawCount: mode.value })}
-              style={({ pressed }) => [
-                styles.option,
-                active && styles.optionActive,
-                pressed && styles.optionPressed,
-              ]}
-            >
-              <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>{mode.label}</Text>
-              <Text style={[styles.optionDescription, active && styles.optionDescriptionActive]}>
-                {mode.description}
-              </Text>
-            </Pressable>
-          );
-        })}
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={mode.value}
+                    onPress={() => void updateSettings({ spiderSuitMode: mode.value })}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                      {mode.label}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, active && styles.optionDescriptionActive]}
+                    >
+                      {mode.description}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </>
+          ) : (
+            <>
+              <Text style={styles.sectionHeading}>Draw style</Text>
+              {drawModes.map((mode) => {
+                const active = settings.drawCount === mode.value;
 
-        <Text style={styles.sectionHeading}>Hint mode</Text>
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={mode.value}
+                    onPress={() => void updateSettings({ drawCount: mode.value })}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                      {mode.label}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, active && styles.optionDescriptionActive]}
+                    >
+                      {mode.description}
+                    </Text>
+                  </Pressable>
+                );
+              })}
 
-        {hintModes.map((mode) => {
-          const active = settings.hintMode === mode.value;
+              <Text style={styles.sectionHeading}>Hint mode</Text>
+              {hintModes.map((mode) => {
+                const active = settings.hintMode === mode.value;
 
-          return (
-            <Pressable
-              accessibilityRole="button"
-              key={mode.value}
-              onPress={() => void updateSettings({ hintMode: mode.value })}
-              style={({ pressed }) => [
-                styles.option,
-                active && styles.optionActive,
-                pressed && styles.optionPressed,
-              ]}
-            >
-              <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>{mode.label}</Text>
-              <Text style={[styles.optionDescription, active && styles.optionDescriptionActive]}>
-                {mode.description}
-              </Text>
-            </Pressable>
-          );
-        })}
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={mode.value}
+                    onPress={() => void updateSettings({ hintMode: mode.value })}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                      {mode.label}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, active && styles.optionDescriptionActive]}
+                    >
+                      {mode.description}
+                    </Text>
+                  </Pressable>
+                );
+              })}
 
-        <Text style={styles.sectionHeading}>Empty tableau rule</Text>
-        {emptyTableauModes.map((mode) => {
-          const active = settings.emptyTableauPolicy === mode.value;
+              <Text style={styles.sectionHeading}>Empty tableau rule</Text>
+              {emptyTableauModes.map((mode) => {
+                const active = settings.emptyTableauPolicy === mode.value;
 
-          return (
-            <Pressable
-              accessibilityRole="button"
-              key={mode.value}
-              onPress={() => void updateSettings({ emptyTableauPolicy: mode.value })}
-              style={({ pressed }) => [
-                styles.option,
-                active && styles.optionActive,
-                pressed && styles.optionPressed,
-              ]}
-            >
-              <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>{mode.label}</Text>
-              <Text style={[styles.optionDescription, active && styles.optionDescriptionActive]}>
-                {mode.description}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={mode.value}
+                    onPress={() => void updateSettings({ emptyTableauPolicy: mode.value })}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                      {mode.label}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, active && styles.optionDescriptionActive]}
+                    >
+                      {mode.description}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -145,9 +224,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: palette.table,
   },
-  container: {
-    flex: 1,
+  scrollContent: {
     padding: spacing.lg,
+  },
+  container: {
     gap: spacing.md,
   },
   heading: {
