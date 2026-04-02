@@ -1,13 +1,28 @@
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
+import type { GameVariant } from '../state/types';
 import { palette, radius, spacing, typography } from '../theme';
 
 export function HomeScreen() {
   const { hydrated, saves } = useAppModel();
-  const canContinue = hydrated && Boolean(saves.klondike);
+  const lastSavedGame = hydrated
+    ? (
+      Object.entries(saves) as Array<[GameVariant, (typeof saves)[GameVariant]]>
+    )
+      .filter(
+        (entry): entry is [GameVariant, NonNullable<(typeof saves)[GameVariant]>] =>
+          Boolean(entry[1]),
+      )
+      .sort((left, right) => {
+        const leftTime = new Date(left[1].updatedAt).getTime();
+        const rightTime = new Date(right[1].updatedAt).getTime();
+        return rightTime - leftTime;
+      })[0] ?? null
+    : null;
+  const canContinue = Boolean(lastSavedGame);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -16,7 +31,7 @@ export function HomeScreen() {
           <Text style={styles.eyebrow}>Offline-first solitaire</Text>
           <Text style={styles.title}>Mum&apos;s Cards</Text>
           <Text style={styles.subtitle}>
-            A modular Klondike scaffold with a reusable engine, future variant slots, and
+            A modular Solitare scaffold with a reusable engine, future variant slots, and
             conservative table styling.
           </Text>
         </View>
@@ -27,7 +42,15 @@ export function HomeScreen() {
             onPress={() => router.push('/game/klondike?mode=new')}
             style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
           >
-            <Text style={styles.primaryButtonText}>New Game</Text>
+            <Text style={styles.primaryButtonText}>New Klondike</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/game/clock?mode=new')}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
+          >
+            <Text style={styles.secondaryButtonText}>New Clock</Text>
           </Pressable>
 
           <Pressable
@@ -48,8 +71,22 @@ export function HomeScreen() {
 
           <Pressable
             accessibilityRole="button"
+            onPress={() => router.push('/game/spider?mode=new')}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
+          >
+            <Text style={styles.secondaryButtonText}>New Spider</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
             disabled={!canContinue}
-            onPress={() => router.push('/game/klondike?mode=resume')}
+            onPress={() => {
+              if (!lastSavedGame) {
+                return;
+              }
+
+              router.push(`/game/${lastSavedGame[0]}?mode=resume`);
+            }}
             style={({ pressed }) => [
               styles.secondaryButton,
               !canContinue && styles.buttonDisabled,
@@ -57,27 +94,9 @@ export function HomeScreen() {
             ]}
           >
             <Text style={styles.secondaryButtonText}>
-              {canContinue ? 'Continue' : 'Continue unavailable'}
+              {canContinue ? 'Continue Last Game' : 'Continue unavailable'}
             </Text>
           </Pressable>
-
-          <Link asChild href="/rules">
-            <Pressable
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
-            >
-              <Text style={styles.secondaryButtonText}>Rules</Text>
-            </Pressable>
-          </Link>
-
-          <Link asChild href="/settings">
-            <Pressable
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
-            >
-              <Text style={styles.secondaryButtonText}>Settings</Text>
-            </Pressable>
-          </Link>
         </View>
       </View>
     </SafeAreaView>

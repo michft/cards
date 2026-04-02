@@ -246,6 +246,16 @@ export function PyramidGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
+                  router.replace('/game/clock?mode=new');
+                }}
+                style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
+              >
+                <Text style={styles.actionButtonText}>Clock</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
                   router.replace('/game/freecell?mode=new');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
@@ -309,6 +319,7 @@ export function PyramidGameScreen({ mode }: Props) {
             ) : null}
             <ActionButton label="Undo" onPress={undo} disabled={history.past.length === 0} />
             <ActionButton label="Redo" onPress={redo} disabled={history.future.length === 0} />
+            <ActionButton label="Rules" onPress={() => router.push('/rules?game=pyramid')} />
             <Pressable
               accessibilityLabel="Open settings"
               accessibilityRole="button"

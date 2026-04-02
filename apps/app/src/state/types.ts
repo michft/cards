@@ -1,3 +1,4 @@
+import type { ClockState } from '@mumscards/game-clock';
 import type { FreeCellState } from '@mumscards/game-freecell';
 import type { FreeCellTableauBuildPolicy } from '@mumscards/game-freecell';
 import type { PersistedGameEnvelope } from '@mumscards/engine-core';
@@ -10,9 +11,10 @@ import type {
 import type { PyramidState } from '@mumscards/game-pyramid';
 import type { SpiderState, SpiderSuitMode } from '@mumscards/game-spider';
 
-export type GameVariant = 'freecell' | 'klondike' | 'pyramid' | 'spider';
+export type GameVariant = 'clock' | 'freecell' | 'klondike' | 'pyramid' | 'spider';
 
 export type GameStateMap = {
+  clock: ClockState;
   freecell: FreeCellState;
   klondike: KlondikeState;
   pyramid: PyramidState;
@@ -34,6 +36,7 @@ export type AppSettings = {
   spiderDebugTools: boolean;
   freeCellDebugTools: boolean;
   pyramidDebugTools: boolean;
+  clockDebugTools: boolean;
 };
 
 export type SavedGames = {
@@ -54,9 +57,11 @@ export const defaultSettings: AppSettings = {
   spiderDebugTools: false,
   freeCellDebugTools: false,
   pyramidDebugTools: false,
+  clockDebugTools: false,
 };
 
 export const defaultSavedGames: SavedGames = {
+  clock: null,
   freecell: null,
   klondike: null,
   pyramid: null,
@@ -64,6 +69,7 @@ export const defaultSavedGames: SavedGames = {
 };
 
 export const defaultSavedSnapshots: SavedSnapshots = {
+  clock: [],
   freecell: [],
   klondike: [],
   pyramid: [],

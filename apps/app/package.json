@@ -15,6 +15,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
     "@mumscards/engine-core": "workspace:*",
+    "@mumscards/game-clock": "workspace:*",
     "@mumscards/game-freecell": "workspace:*",
     "@mumscards/game-klondike": "workspace:*",
     "@mumscards/game-pyramid": "workspace:*",

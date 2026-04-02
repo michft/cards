@@ -129,6 +129,8 @@ export function SettingsScreen() {
     ? 'spider'
     : params.game === 'freecell'
       ? 'freecell'
+      : params.game === 'clock'
+        ? 'clock'
       : params.game === 'pyramid'
         ? 'pyramid'
       : 'klondike';
@@ -142,6 +144,8 @@ export function SettingsScreen() {
               ? 'Spider settings'
               : game === 'freecell'
                 ? 'FreeCell settings'
+                : game === 'clock'
+                  ? 'Clock settings'
                 : game === 'pyramid'
                   ? 'Pyramid settings'
                 : 'Klondike settings'}
@@ -242,6 +246,40 @@ export function SettingsScreen() {
                     accessibilityRole="button"
                     key={`freecell-debug-${String(mode.value)}`}
                     onPress={() => void updateSettings({ freeCellDebugTools: mode.value })}
+                    style={({ pressed }) => [
+                      styles.option,
+                      active && styles.optionActive,
+                      pressed && styles.optionPressed,
+                    ]}
+                  >
+                    <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                      {mode.label}
+                    </Text>
+                    <Text
+                      style={[styles.optionDescription, active && styles.optionDescriptionActive]}
+                    >
+                      {mode.description}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </>
+          ) : game === 'clock' ? (
+            <>
+              <Text style={styles.sectionHeading}>Clock</Text>
+              <Text style={styles.subheading}>
+                12 outer piles with a 4-card stock, drawn and resolved one at a time.
+              </Text>
+
+              <Text style={styles.sectionHeading}>Debug tools</Text>
+              {debugModes.map((mode) => {
+                const active = settings.clockDebugTools === mode.value;
+
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={`clock-debug-${String(mode.value)}`}
+                    onPress={() => void updateSettings({ clockDebugTools: mode.value })}
                     style={({ pressed }) => [
                       styles.option,
                       active && styles.optionActive,

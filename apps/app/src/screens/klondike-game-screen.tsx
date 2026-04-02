@@ -634,6 +634,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
           <ActionButton label="Undo" onPress={undo} disabled={history.past.length === 0} />
           <ActionButton label="Redo" onPress={redo} disabled={history.future.length === 0} />
           <ActionButton label="Hint" onPress={showHint} />
+          <ActionButton label="Rules" onPress={() => router.push('/rules?game=klondike')} />
           <Pressable
             accessibilityLabel="Open settings"
             accessibilityRole="button"
@@ -854,6 +855,16 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
           </View>
           {gameMenuOpen ? (
             <View style={styles.floatingGameMenu}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
+                  router.replace('/game/clock?mode=new');
+                }}
+                style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
+              >
+                <Text style={styles.gameSwitchButtonText}>Clock</Text>
+              </Pressable>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {

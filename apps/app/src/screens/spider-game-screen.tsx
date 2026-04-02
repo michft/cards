@@ -265,6 +265,16 @@ export function SpiderGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
+                  router.replace('/game/clock?mode=new');
+                }}
+                style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
+              >
+                <Text style={styles.switchButtonText}>Clock</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setGameMenuOpen(false);
                   router.replace('/game/freecell?mode=new');
                 }}
                 style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
@@ -363,6 +373,13 @@ export function SpiderGameScreen({ mode }: Props) {
               ]}
             >
               <Text style={styles.switchButtonText}>Redo</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/rules?game=spider')}
+              style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.switchButtonText}>Rules</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"

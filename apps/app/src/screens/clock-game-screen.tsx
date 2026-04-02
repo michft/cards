@@ -1,12 +1,6 @@
 import type { PersistedGameEnvelope } from '@mumscards/engine-core';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  applyFreeCellMove,
-  createFreeCellGame,
-  type FreeCellDestination,
-  type FreeCellSource,
-  type FreeCellState,
-} from '@mumscards/game-freecell';
+import { createClockGame, drawClockStock, placeClockActiveCard, type ClockState } from '@mumscards/game-clock';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -17,50 +11,46 @@ import { palette, radius, spacing, typography } from '../theme';
 import { CardStack } from './shared/card-stack';
 
 type HistoryState = {
-  past: FreeCellState[];
-  present: FreeCellState;
-  future: FreeCellState[];
+  past: ClockState[];
+  present: ClockState;
+  future: ClockState[];
 };
 
 type Props = {
   mode: 'new' | 'resume';
 };
 
-export function FreeCellGameScreen({ mode }: Props) {
+const hourLabels = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q'];
+
+export function ClockGameScreen({ mode }: Props) {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const {
-    hydrated,
-    saves,
-    saveGame,
     clearGame,
+    deleteSnapshot,
+    hydrated,
+    saveGame,
+    saveSnapshot,
+    saves,
     settings,
     snapshots,
-    saveSnapshot,
-    deleteSnapshot,
   } = useAppModel();
-  const savedGame = saves.freecell;
+  const savedGame = saves.clock;
   const resumeRestoredRef = useRef(false);
   const [history, setHistory] = useState<HistoryState>(() =>
-    createHistoryState(
-      mode === 'resume' && savedGame ? savedGame.state : createFreeCellGame(Math.random),
-    ),
+    createHistoryState(mode === 'resume' && savedGame ? savedGame.state : createClockGame(Math.random)),
   );
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
-  const [selectedSource, setSelectedSource] = useState<FreeCellSource | null>(null);
-  const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
-  const [offloadActive, setOffloadActive] = useState(false);
   const availableWidth = Math.max(320, width - spacing.lg * 2);
-  const cardWidth = Math.max(46, Math.min(72, availableWidth / 11.4));
-  const rowGap = spacing.sm;
-  const topRowWidth = cardWidth * 8 + rowGap * 7;
-  const tableauRowWidth = cardWidth * 8 + rowGap * 7;
-  const boardMinWidth = Math.max(topRowWidth, tableauRowWidth);
+  const cardWidth = Math.max(42, Math.min(68, availableWidth / 8.6));
+  const boardSize = cardWidth * 5.6;
+  const radiusPx = boardSize * 0.38;
+  const slotSize = cardWidth;
 
   useEffect(() => {
     resumeRestoredRef.current = false;
-    setHistory(createHistoryState(createFreeCellGame(Math.random)));
+    setHistory(createHistoryState(createClockGame(Math.random)));
     clearInteraction();
   }, [mode]);
 
@@ -80,70 +70,25 @@ export function FreeCellGameScreen({ mode }: Props) {
     }
 
     if (history.present.won) {
-      void clearGame('freecell');
+      void clearGame('clock');
       return;
     }
 
-    const envelope: PersistedGameEnvelope<FreeCellState> = {
-      gameId: 'freecell',
+    const envelope: PersistedGameEnvelope<ClockState> = {
+      gameId: 'clock',
       updatedAt: new Date().toISOString(),
       state: history.present,
     };
 
-    void saveGame('freecell', envelope);
+    void saveGame('clock', envelope);
   }, [clearGame, history.present, hydrated, saveGame]);
 
-  useEffect(() => {
-    if (!offloadActive) {
-      return;
-    }
-
-    const move = getNextFreeCellFoundationMove(history.present);
-
-    if (!move) {
-      setOffloadActive(false);
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      setHistory((current) => {
-        const nextMove = getNextFreeCellFoundationMove(current.present);
-
-        if (!nextMove) {
-          return current;
-        }
-
-        const nextWithRules = applyFreeCellMove(
-          current.present,
-          nextMove.source,
-          nextMove.destination,
-          { tableauBuildPolicy: settings.freeCellTableauBuildPolicy },
-        );
-
-        if (JSON.stringify(nextWithRules) === JSON.stringify(current.present)) {
-          return current;
-        }
-
-        return {
-          past: [...current.past.slice(-49), current.present],
-          present: nextWithRules,
-          future: [],
-        };
-      });
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [history.present, offloadActive, settings.freeCellTableauBuildPolicy]);
-
   function clearInteraction() {
-    setOffloadActive(false);
     setGameMenuOpen(false);
-    setSelectedSource(null);
-    setExpandedTableauPile(null);
     setSnapshotPickerOpen(false);
   }
 
-  function commit(next: FreeCellState) {
+  function commit(next: ClockState) {
     setHistory((current) => ({
       past: [...current.past.slice(-49), current.present],
       present: next,
@@ -153,8 +98,24 @@ export function FreeCellGameScreen({ mode }: Props) {
   }
 
   function startNewGame() {
-    setHistory(createHistoryState(createFreeCellGame(Math.random)));
+    setHistory(createHistoryState(createClockGame(Math.random)));
     clearInteraction();
+  }
+
+  function draw() {
+    const next = drawClockStock(history.present);
+
+    if (next !== history.present) {
+      commit(next);
+    }
+  }
+
+  function place() {
+    const next = placeClockActiveCard(history.present);
+
+    if (next !== history.present) {
+      commit(next);
+    }
   }
 
   function undo() {
@@ -192,67 +153,17 @@ export function FreeCellGameScreen({ mode }: Props) {
   }
 
   function saveCurrentState() {
-    const envelope: PersistedGameEnvelope<FreeCellState> = {
-      gameId: 'freecell',
+    const envelope: PersistedGameEnvelope<ClockState> = {
+      gameId: 'clock',
       updatedAt: new Date().toISOString(),
       state: history.present,
     };
-    void saveSnapshot('freecell', envelope);
+    void saveSnapshot('clock', envelope);
   }
 
-  function loadSnapshot(snapshot: PersistedGameEnvelope<FreeCellState>) {
+  function loadSnapshot(snapshot: PersistedGameEnvelope<ClockState>) {
     setHistory(createHistoryState(snapshot.state));
     clearInteraction();
-  }
-
-  function handleSourcePress(source: FreeCellSource) {
-    if (selectedSource && JSON.stringify(selectedSource) === JSON.stringify(source)) {
-      setSelectedSource(null);
-      return;
-    }
-
-    setSelectedSource(source);
-  }
-
-  function handleDestinationPress(destination: FreeCellDestination) {
-    if (!selectedSource) {
-      return;
-    }
-
-    if (
-      (selectedSource.zone === 'tableau' &&
-        destination.zone === 'tableau' &&
-        selectedSource.pileIndex === destination.pileIndex) ||
-      (selectedSource.zone === 'cell' &&
-        destination.zone === 'cell' &&
-        selectedSource.cellIndex === destination.cellIndex)
-    ) {
-      setSelectedSource(null);
-      return;
-    }
-
-    const next = applyFreeCellMove(history.present, selectedSource, destination, {
-      tableauBuildPolicy: settings.freeCellTableauBuildPolicy,
-    });
-
-    if (JSON.stringify(next) === JSON.stringify(history.present)) {
-      return;
-    }
-
-    commit(next);
-  }
-
-  function toggleOffload() {
-    if (offloadActive) {
-      setOffloadActive(false);
-      return;
-    }
-
-    if (!getNextFreeCellFoundationMove(history.present)) {
-      return;
-    }
-
-    setOffloadActive(true);
   }
 
   return (
@@ -270,19 +181,19 @@ export function FreeCellGameScreen({ mode }: Props) {
           </View>
           {gameMenuOpen ? (
             <View style={styles.floatingGameMenu}>
+              <View style={[styles.actionButton, styles.actionButtonActive]}>
+                <Text style={styles.actionButtonTextActive}>Clock</Text>
+              </View>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/clock?mode=new');
+                  router.replace('/game/freecell?mode=new');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
-                <Text style={styles.actionButtonText}>Clock</Text>
+                <Text style={styles.actionButtonText}>FreeCell</Text>
               </Pressable>
-              <View style={[styles.actionButton, styles.actionButtonActive]}>
-                <Text style={styles.actionButtonTextActive}>FreeCell</Text>
-              </View>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
@@ -330,28 +241,29 @@ export function FreeCellGameScreen({ mode }: Props) {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.headerActions}>
             <ActionButton label="New" onPress={startNewGame} />
-            {settings.freeCellDebugTools ? (
+            <ActionButton
+              label="Draw"
+              onPress={draw}
+              disabled={history.present.stock.length === 0 || history.present.activeCard !== null}
+            />
+            <ActionButton label="Place" onPress={place} disabled={!history.present.activeCard} />
+            {settings.clockDebugTools ? (
               <ActionButton label="Save" onPress={saveCurrentState} />
             ) : null}
-            {settings.freeCellDebugTools ? (
+            {settings.clockDebugTools ? (
               <ActionButton
                 label="Load"
                 onPress={() => setSnapshotPickerOpen((current) => !current)}
-                disabled={snapshots.freecell.length === 0}
+                disabled={snapshots.clock.length === 0}
               />
             ) : null}
-            <ActionButton
-              label={offloadActive ? 'Stop' : 'Offload'}
-              onPress={toggleOffload}
-              disabled={!offloadActive && !getNextFreeCellFoundationMove(history.present)}
-            />
             <ActionButton label="Undo" onPress={undo} disabled={history.past.length === 0} />
             <ActionButton label="Redo" onPress={redo} disabled={history.future.length === 0} />
-            <ActionButton label="Rules" onPress={() => router.push('/rules?game=freecell')} />
+            <ActionButton label="Rules" onPress={() => router.push('/rules?game=clock')} />
             <Pressable
               accessibilityLabel="Open settings"
               accessibilityRole="button"
-              onPress={() => router.push('/settings?game=freecell')}
+              onPress={() => router.push('/settings?game=clock')}
               style={({ pressed }) => [
                 styles.actionButton,
                 styles.actionIconButton,
@@ -362,9 +274,9 @@ export function FreeCellGameScreen({ mode }: Props) {
             </Pressable>
           </View>
 
-          {settings.freeCellDebugTools && snapshotPickerOpen ? (
+          {settings.clockDebugTools && snapshotPickerOpen ? (
             <View style={styles.snapshotPanel}>
-              {snapshots.freecell.map((snapshot) => (
+              {snapshots.clock.map((snapshot) => (
                 <View key={snapshot.id} style={styles.snapshotRow}>
                   <Pressable
                     accessibilityRole="button"
@@ -378,7 +290,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
-                    onPress={() => void deleteSnapshot('freecell', snapshot.id)}
+                    onPress={() => void deleteSnapshot('clock', snapshot.id)}
                     style={({ pressed }) => [
                       styles.snapshotDeleteButton,
                       pressed && styles.actionButtonPressed,
@@ -391,160 +303,66 @@ export function FreeCellGameScreen({ mode }: Props) {
             </View>
           ) : null}
 
-          {history.present.won ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
+          {history.present.won ? <Text style={styles.winText}>Clock solved.</Text> : null}
 
-          <ScrollView
-            contentContainerStyle={styles.horizontalBoardContent}
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator={false}
-          >
-            <View style={[styles.board, { minWidth: boardMinWidth }]}>
-              <View style={styles.topRow}>
-                {history.present.freeCells.map((card, cellIndex) => (
-                  <CardStack
-                    cardWidth={cardWidth}
-                    cards={card ? [{ ...card, faceUp: true }] : []}
-                    key={`cell-${cellIndex}`}
-                    onCardPress={
-                      selectedSource
-                        ? () => handleDestinationPress({ zone: 'cell', cellIndex })
-                        : card
-                          ? () => handleSourcePress({ zone: 'cell', cellIndex })
-                          : undefined
-                    }
-                    placeholderLabel="Free"
-                    selected={
-                      selectedSource?.zone === 'cell' && selectedSource.cellIndex === cellIndex
-                    }
-                  />
-                ))}
-                {history.present.foundations.map((pile, pileIndex) => (
-                  <CardStack
-                    cardWidth={cardWidth}
-                    cards={pile.slice(-1).map((card) => ({ ...card, faceUp: true }))}
-                    key={`foundation-${pileIndex}`}
-                    onCardPress={
-                      selectedSource
-                        ? () => handleDestinationPress({ zone: 'foundation', pileIndex })
-                        : undefined
-                    }
-                    placeholderLabel="A"
-                  />
-                ))}
-              </View>
+          <View style={styles.topRow}>
+            <CardStack
+              cardWidth={cardWidth}
+              cards={history.present.stock.slice(-1)}
+              onCardPress={draw}
+              placeholderLabel={String(history.present.stock.length)}
+              variant="back"
+            />
+            <CardStack
+              cardWidth={cardWidth}
+              cards={history.present.activeCard ? [history.present.activeCard] : []}
+              onCardPress={history.present.activeCard ? place : undefined}
+              placeholderLabel=""
+              selected={Boolean(history.present.activeCard)}
+            />
+            <CardStack
+              cardWidth={cardWidth}
+              cards={history.present.kings.slice(-1)}
+              placeholderLabel="K"
+            />
+          </View>
 
-              <View style={styles.tableauRow}>
-                {history.present.tableau.map((pile, pileIndex) => (
-                  <CardStack
-                    cardWidth={cardWidth}
-                    cards={pile.map((card) => ({ ...card, faceUp: true }))}
-                    expanded={expandedTableauPile === pileIndex}
-                    key={`tableau-${pileIndex}`}
-                    onCardPress={
-                      selectedSource
-                        ? () => handleDestinationPress({ zone: 'tableau', pileIndex })
-                        : undefined
-                    }
-                    onFaceUpCardPress={(cardIndex) => {
-                      if (selectedSource) {
-                        handleDestinationPress({ zone: 'tableau', pileIndex });
-                        return;
-                      }
+          <View style={[styles.clockBoard, { height: boardSize, width: boardSize }]}>
+            {history.present.hours.map((pile, hourIndex) => {
+              const angle = (Math.PI * 2 * hourIndex) / 12 - Math.PI / 2;
+              const center = boardSize / 2;
+              const x = center + Math.cos(angle) * radiusPx - slotSize / 2;
+              const y = center + Math.sin(angle) * radiusPx - slotSize / 2;
 
-                      handleSourcePress({ zone: 'tableau', pileIndex, cardIndex });
-                    }}
-                    onCardHoldEnd={() => {
-                      setExpandedTableauPile((current) => (current === pileIndex ? null : current));
-                    }}
-                    onCardHoldStart={() => {
-                      setExpandedTableauPile(pileIndex);
-                    }}
-                    placeholderLabel=""
-                    selected={
-                      selectedSource?.zone === 'tableau' && selectedSource.pileIndex === pileIndex
-                    }
-                  />
-                ))}
-              </View>
-            </View>
-          </ScrollView>
+              return (
+                <View
+                  key={`clock-hour-${hourIndex}`}
+                  style={[
+                    styles.hourSlot,
+                    {
+                      left: x,
+                      top: y,
+                      width: slotSize,
+                    },
+                  ]}
+                >
+                  <CardStack cardWidth={cardWidth} cards={pile.slice(-1)} placeholderLabel={hourLabels[hourIndex]} />
+                </View>
+              );
+            })}
+          </View>
         </ScrollView>
       </View>
     </SafeAreaView>
   );
 }
 
-function createHistoryState(state: FreeCellState): HistoryState {
+function createHistoryState(state: ClockState): HistoryState {
   return {
     past: [],
     present: state,
     future: [],
   };
-}
-
-function getNextFreeCellFoundationMove(
-  state: FreeCellState,
-): { source: FreeCellSource; destination: FreeCellDestination } | null {
-  for (let cellIndex = 0; cellIndex < state.freeCells.length; cellIndex += 1) {
-    const card = state.freeCells[cellIndex];
-
-    if (!card) {
-      continue;
-    }
-
-    const destination = getFoundationDestinationForCard(state, card);
-
-    if (destination !== null) {
-      return {
-        source: { zone: 'cell', cellIndex },
-        destination: { zone: 'foundation', pileIndex: destination },
-      };
-    }
-  }
-
-  for (let pileIndex = 0; pileIndex < state.tableau.length; pileIndex += 1) {
-    const pile = state.tableau[pileIndex];
-    const card = pile[pile.length - 1];
-
-    if (!card) {
-      continue;
-    }
-
-    const destination = getFoundationDestinationForCard(state, card);
-
-    if (destination !== null) {
-      return {
-        source: { zone: 'tableau', pileIndex, cardIndex: pile.length - 1 },
-        destination: { zone: 'foundation', pileIndex: destination },
-      };
-    }
-  }
-
-  return null;
-}
-
-function getFoundationDestinationForCard(state: FreeCellState, card: FreeCellState['tableau'][number][number]): number | null {
-  for (let pileIndex = 0; pileIndex < state.foundations.length; pileIndex += 1) {
-    const pile = state.foundations[pileIndex];
-    const top = pile[pile.length - 1];
-
-    if (top && top.suit === card.suit && top.rank + 1 === card.rank) {
-      return pileIndex;
-    }
-  }
-
-  if (card.rank !== 1) {
-    return null;
-  }
-
-  for (let pileIndex = 0; pileIndex < state.foundations.length; pileIndex += 1) {
-    if (state.foundations[pileIndex].length === 0) {
-      return pileIndex;
-    }
-  }
-
-  return null;
 }
 
 function ActionButton({
@@ -639,23 +457,10 @@ const styles = StyleSheet.create({
   },
   actionIconButton: {
     alignItems: 'center',
+    minHeight: 38,
     justifyContent: 'center',
     minWidth: 38,
     paddingHorizontal: spacing.sm,
-  },
-  horizontalBoardContent: {
-    paddingBottom: spacing.sm,
-  },
-  board: {
-    gap: spacing.lg,
-  },
-  topRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  tableauRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
   },
   snapshotPanel: {
     backgroundColor: palette.paper,
@@ -687,6 +492,19 @@ const styles = StyleSheet.create({
     color: palette.ink,
     fontSize: typography.body,
     fontWeight: '600',
+  },
+  topRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  clockBoard: {
+    alignSelf: 'center',
+    marginTop: spacing.md,
+    position: 'relative',
+  },
+  hourSlot: {
+    position: 'absolute',
   },
   winText: {
     color: '#f3e1b5',

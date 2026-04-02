@@ -15,6 +15,7 @@ vi.mock('../src/state/app-provider', () => ({
   useAppModel: () => ({
     hydrated: true,
     saves: {
+      clock: null,
       klondike: null,
       freecell: null,
       pyramid: null,
@@ -28,8 +29,11 @@ describe('Home screen', () => {
     render(<HomeScreen />);
 
     expect(screen.getByText("Mum's Cards")).toBeTruthy();
-    expect(screen.getByText('New Game')).toBeTruthy();
-    expect(screen.getByText('Rules')).toBeTruthy();
-    expect(screen.getByText('Settings')).toBeTruthy();
+    expect(screen.getByText('Continue unavailable')).toBeTruthy();
+    expect(screen.getByText('New Klondike')).toBeTruthy();
+    expect(screen.getByText('New Clock')).toBeTruthy();
+    expect(screen.getByText('New FreeCell')).toBeTruthy();
+    expect(screen.getByText('New Pyramid')).toBeTruthy();
+    expect(screen.getByText('New Spider')).toBeTruthy();
   });
 });
