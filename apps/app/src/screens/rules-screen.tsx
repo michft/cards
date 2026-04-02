@@ -6,9 +6,9 @@ import { palette, radius, spacing, typography } from '../theme';
 const rules = [
   'Build tableau piles down in alternating colours.',
   'Move complete face-up runs between tableau piles.',
-  'Only Kings can move into empty tableau columns.',
+  'Empty tableau columns can be configured as King-only or Any in Settings.',
   'Build foundations upward by suit from Ace through King.',
-  'Draw three cards from stock. When stock is empty, recycle the waste.',
+  'Draw style is configurable: draw 1 or draw 3 from stock. When stock is empty, recycle the waste.',
 ];
 
 export function RulesScreen() {
@@ -16,7 +16,7 @@ export function RulesScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>
-          <Text style={styles.title}>Klondike, draw three</Text>
+          <Text style={styles.title}>Klondike</Text>
           {rules.map((rule) => (
             <Text key={rule} style={styles.rule}>
               {`\u2022 ${rule}`}

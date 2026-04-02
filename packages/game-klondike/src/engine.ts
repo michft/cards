@@ -2,6 +2,8 @@ import { createDeck, rankLabel } from '@mumscards/engine-core';
 
 import type {
   KlondikeDestination,
+  KlondikeDrawCount,
+  KlondikeEmptyTableauPolicy,
   KlondikeHint,
   KlondikeHintMode,
   KlondikeMove,
@@ -16,9 +18,21 @@ type MoveCandidate = {
   label: string;
 };
 
+type KlondikeRuleOptions = {
+  drawCount?: KlondikeDrawCount;
+  emptyTableauPolicy?: KlondikeEmptyTableauPolicy;
+};
+
+function resolveOptions(options?: KlondikeRuleOptions): Required<KlondikeRuleOptions> {
+  return {
+    drawCount: options?.drawCount ?? 3,
+    emptyTableauPolicy: options?.emptyTableauPolicy ?? 'any',
+  };
+}
+
 type MutableKlondikeState = {
   gameId: 'klondike';
-  drawCount: 3;
+  drawCount: KlondikeDrawCount;
   completed: boolean;
   stock: KlondikeState['stock'];
   waste: KlondikeState['waste'];
@@ -26,7 +40,8 @@ type MutableKlondikeState = {
   tableau: KlondikeState['tableau'];
 };
 
-export function createKlondikeGame(random = Math.random): KlondikeState {
+export function createKlondikeGame(random = Math.random, options?: KlondikeRuleOptions): KlondikeState {
+  const resolved = resolveOptions(options);
   const deck = shuffle(createDeck('klondike'), random);
   const tableau = Array.from({ length: 7 }, (_, pileIndex) => {
     const pile: KlondikeTableauCard[] = [];
@@ -49,7 +64,7 @@ export function createKlondikeGame(random = Math.random): KlondikeState {
 
   return {
     gameId: 'klondike',
-    drawCount: 3,
+    drawCount: resolved.drawCount,
     completed: false,
     stock: deck,
     waste: [],
@@ -94,7 +109,11 @@ export function recycleWaste(state: KlondikeState): KlondikeState {
   return next;
 }
 
-export function applyKlondikeMove(state: KlondikeState, move: KlondikeMove): KlondikeState {
+export function applyKlondikeMove(
+  state: KlondikeState,
+  move: KlondikeMove,
+  options?: KlondikeRuleOptions,
+): KlondikeState {
   if (move.kind === 'draw') {
     return drawFromStock(state);
   }
@@ -103,14 +122,16 @@ export function applyKlondikeMove(state: KlondikeState, move: KlondikeMove): Klo
     return recycleWaste(state);
   }
 
-  return moveCards(state, move.source, move.destination) ?? cloneKlondikeState(state);
+  return moveCards(state, move.source, move.destination, options) ?? cloneKlondikeState(state);
 }
 
 export function moveCards(
   state: KlondikeState,
   source: KlondikeSource,
   destination: KlondikeDestination,
+  options?: KlondikeRuleOptions,
 ): KlondikeState | null {
+  const resolved = resolveOptions(options);
   const payload = getMovePayload(state, source);
 
   if (!payload) {
@@ -132,7 +153,10 @@ export function moveCards(
   if (destination.zone === 'tableau') {
     const targetPile = state.tableau[destination.pileIndex];
 
-    if (!targetPile || !canPlaceOnTableau(payload.cards, targetPile)) {
+    if (
+      !targetPile ||
+      !canPlaceOnTableau(payload.cards, targetPile, resolved.emptyTableauPolicy)
+    ) {
       return null;
     }
   }
@@ -157,7 +181,11 @@ export function moveCards(
   return next;
 }
 
-export function getLegalMoves(state: KlondikeState): KlondikeMove[] {
+export function getLegalMoves(
+  state: KlondikeState,
+  options?: KlondikeRuleOptions,
+): KlondikeMove[] {
+  const resolved = resolveOptions(options);
   const moves: KlondikeMove[] = [];
 
   if (state.stock.length > 0) {
@@ -169,7 +197,7 @@ export function getLegalMoves(state: KlondikeState): KlondikeMove[] {
   if (state.waste.length > 0) {
     const wasteSource: KlondikeSource = { zone: 'waste' };
     moves.push(...toMoves(wasteSource, getFoundationTargets(state, wasteSource)));
-    moves.push(...toMoves(wasteSource, getTableauTargets(state, wasteSource)));
+    moves.push(...toMoves(wasteSource, getTableauTargets(state, wasteSource, resolved.emptyTableauPolicy)));
   }
 
   for (let foundationIndex = 0; foundationIndex < state.foundations.length; foundationIndex += 1) {
@@ -178,7 +206,7 @@ export function getLegalMoves(state: KlondikeState): KlondikeMove[] {
     }
 
     const source: KlondikeSource = { zone: 'foundation', pileIndex: foundationIndex };
-    moves.push(...toMoves(source, getTableauTargets(state, source)));
+    moves.push(...toMoves(source, getTableauTargets(state, source, resolved.emptyTableauPolicy)));
   }
 
   for (let pileIndex = 0; pileIndex < state.tableau.length; pileIndex += 1) {
@@ -197,7 +225,7 @@ export function getLegalMoves(state: KlondikeState): KlondikeMove[] {
         moves.push(...toMoves(source, getFoundationTargets(state, source)));
       }
 
-      moves.push(...toMoves(source, getTableauTargets(state, source)));
+      moves.push(...toMoves(source, getTableauTargets(state, source, resolved.emptyTableauPolicy)));
     }
   }
 
@@ -207,8 +235,9 @@ export function getLegalMoves(state: KlondikeState): KlondikeMove[] {
 export function getHint(
   state: KlondikeState,
   mode: KlondikeHintMode = 'balanced',
+  options?: KlondikeRuleOptions,
 ): KlondikeHint | null {
-  const moves = getLegalMoves(state).map((move) => scoreMove(state, move, mode));
+  const moves = getLegalMoves(state, options).map((move) => scoreMove(state, move, mode));
   const best = moves.sort((left, right) => right.score - left.score)[0];
 
   if (!best) {
@@ -221,31 +250,36 @@ export function getHint(
   };
 }
 
-export function canAutoComplete(state: KlondikeState): boolean {
+export function canAutoComplete(state: KlondikeState, options?: KlondikeRuleOptions): boolean {
+  const resolved = resolveOptions(options);
   if (state.stock.length > 0 || !allTableauCardsFaceUp(state)) {
     return false;
   }
 
-  const moves = getLegalMoves(state);
+  const moves = getLegalMoves(state, resolved);
   const foundationMoves = moves.filter(isFoundationMove);
   const nonFoundationMoves = moves.filter(
-    (move) => move.kind !== 'move' || move.destination.zone !== 'foundation',
+    (move) =>
+      move.kind !== 'move' ||
+      (move.destination.zone !== 'foundation' &&
+        !(move.destination.zone === 'tableau' && state.tableau[move.destination.pileIndex].length === 0)),
   );
 
   return foundationMoves.length > 0 && nonFoundationMoves.length === 0;
 }
 
-export function runAutoComplete(state: KlondikeState): KlondikeState {
+export function runAutoComplete(state: KlondikeState, options?: KlondikeRuleOptions): KlondikeState {
+  const resolved = resolveOptions(options);
   let next = cloneKlondikeState(state);
   let advanced = true;
 
   while (advanced) {
     advanced = false;
 
-    const foundationMove = getLegalMoves(next).find(isFoundationMove);
+    const foundationMove = getLegalMoves(next, resolved).find(isFoundationMove);
 
     if (foundationMove) {
-      next = applyKlondikeMove(next, foundationMove);
+      next = applyKlondikeMove(next, foundationMove, resolved);
       advanced = true;
     }
   }
@@ -260,14 +294,16 @@ export function isWon(state: KlondikeState): boolean {
 export function getPreferredDestination(
   state: KlondikeState,
   source: KlondikeSource,
+  options?: KlondikeRuleOptions,
 ): KlondikeDestination | null {
+  const resolved = resolveOptions(options);
   const foundation = getFoundationTargets(state, source)[0];
 
   if (foundation) {
     return foundation;
   }
 
-  const tableauTargets = getTableauTargets(state, source);
+  const tableauTargets = getTableauTargets(state, source, resolved.emptyTableauPolicy);
 
   return tableauTargets.length === 1 ? tableauTargets[0] : null;
 }
@@ -345,7 +381,7 @@ function scoreMove(
     }
 
     if (move.destination.zone === 'tableau' && state.tableau[move.destination.pileIndex].length === 0) {
-      score += payload.cards[0].rank === 13 ? 50 : -50;
+      score += 25;
     }
   }
 
@@ -440,7 +476,11 @@ function getFoundationTargets(state: KlondikeState, source: KlondikeSource): Klo
   );
 }
 
-function getTableauTargets(state: KlondikeState, source: KlondikeSource): KlondikeDestination[] {
+function getTableauTargets(
+  state: KlondikeState,
+  source: KlondikeSource,
+  emptyTableauPolicy: KlondikeEmptyTableauPolicy,
+): KlondikeDestination[] {
   const payload = getMovePayload(state, source);
 
   if (!payload) {
@@ -452,7 +492,7 @@ function getTableauTargets(state: KlondikeState, source: KlondikeSource): Klondi
       return [];
     }
 
-    return canPlaceOnTableau(payload.cards, pile)
+    return canPlaceOnTableau(payload.cards, pile, emptyTableauPolicy)
       ? [{ zone: 'tableau' as const, pileIndex }]
       : [];
   });
@@ -473,6 +513,7 @@ function canPlaceOnFoundation(
 function canPlaceOnTableau(
   cards: Array<{ color: string; rank: number }>,
   pile: Array<{ color: string; rank: number }>,
+  emptyTableauPolicy: KlondikeEmptyTableauPolicy,
 ): boolean {
   const leadCard = cards[0];
 
@@ -481,7 +522,7 @@ function canPlaceOnTableau(
   }
 
   if (pile.length === 0) {
-    return leadCard.rank === 13;
+    return emptyTableauPolicy === 'any' || leadCard.rank === 13;
   }
 
   const top = pile[pile.length - 1];

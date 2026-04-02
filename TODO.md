@@ -8,3 +8,4 @@
 - Add sound effects and haptics.
 - Add analytics and crash reporting.
 - Add alternative draw modes and more solitaire variants.
+- Add a game-win end animation.

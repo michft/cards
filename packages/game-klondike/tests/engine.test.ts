@@ -37,6 +37,14 @@ describe('Klondike engine', () => {
     ).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 
+  it('supports draw-one rule variant', () => {
+    const state = createKlondikeGame(() => 0.5, { drawCount: 1 });
+    const next = drawFromStock(state);
+
+    expect(state.drawCount).toBe(1);
+    expect(next.waste).toHaveLength(1);
+  });
+
   it('moves an ace to foundation', () => {
     const state: KlondikeState = {
       gameId: 'klondike',
@@ -66,6 +74,68 @@ describe('Klondike engine', () => {
     expect(next.tableau[0]).toHaveLength(0);
   });
 
+  it('allows moving a non-king tableau run to an empty tableau', () => {
+    const state: KlondikeState = {
+      gameId: 'klondike',
+      drawCount: 3,
+      completed: false,
+      stock: [],
+      waste: [],
+      foundations: [[], [], [], []],
+      tableau: [
+        [card('6-s', 'spades', 6), card('5-h', 'hearts', 5)],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    };
+
+    const next = applyKlondikeMove(state, {
+      kind: 'move',
+      source: { zone: 'tableau', pileIndex: 0, cardIndex: 0 },
+      destination: { zone: 'tableau', pileIndex: 1 },
+    });
+
+    expect(next.tableau[0]).toHaveLength(0);
+    expect(next.tableau[1].map((current) => current.id)).toEqual(['6-s', '5-h']);
+  });
+
+  it('blocks non-king moves to empty tableau when set to king-only', () => {
+    const state: KlondikeState = {
+      gameId: 'klondike',
+      drawCount: 3,
+      completed: false,
+      stock: [],
+      waste: [],
+      foundations: [[], [], [], []],
+      tableau: [
+        [card('6-s', 'spades', 6), card('5-h', 'hearts', 5)],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+      ],
+    };
+
+    const next = applyKlondikeMove(
+      state,
+      {
+        kind: 'move',
+        source: { zone: 'tableau', pileIndex: 0, cardIndex: 0 },
+        destination: { zone: 'tableau', pileIndex: 1 },
+      },
+      { emptyTableauPolicy: 'king-only' },
+    );
+
+    expect(next.tableau[0].map((current) => current.id)).toEqual(['6-s', '5-h']);
+    expect(next.tableau[1]).toHaveLength(0);
+  });
+
   it('prefers revealing hidden cards in balanced hint mode', () => {
     const state: KlondikeState = {
       gameId: 'klondike',
@@ -87,11 +157,14 @@ describe('Klondike engine', () => {
 
     const hint = getHint(state, 'balanced');
 
-    expect(hint?.move).toEqual({
-      kind: 'move',
-      source: { zone: 'tableau', pileIndex: 0, cardIndex: 1 },
-      destination: { zone: 'tableau', pileIndex: 1 },
-    });
+    expect(hint?.move.kind).toBe('move');
+
+    if (!hint || hint.move.kind !== 'move') {
+      throw new Error('Expected a move hint.');
+    }
+
+    expect(hint.move.source).toEqual({ zone: 'tableau', pileIndex: 0, cardIndex: 1 });
+    expect(hint.move.destination.zone).toBe('tableau');
   });
 
   it('recognizes auto-complete ready states', () => {

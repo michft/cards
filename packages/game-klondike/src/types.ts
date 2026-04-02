@@ -3,6 +3,8 @@ import type { PlayingCard } from '@mumscards/engine-core';
 export type KlondikeGameId = 'klondike';
 
 export type KlondikeHintMode = 'balanced' | 'mobility' | 'foundation-first';
+export type KlondikeEmptyTableauPolicy = 'any' | 'king-only';
+export type KlondikeDrawCount = 1 | 3;
 
 export type KlondikeTableauCard = PlayingCard & {
   faceUp: boolean;
@@ -29,7 +31,7 @@ export type KlondikeHint = {
 
 export type KlondikeState = {
   gameId: KlondikeGameId;
-  drawCount: 3;
+  drawCount: KlondikeDrawCount;
   completed: boolean;
   stock: PlayingCard[];
   waste: PlayingCard[];

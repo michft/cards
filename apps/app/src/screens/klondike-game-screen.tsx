@@ -1,4 +1,6 @@
 import type { PersistedGameEnvelope } from '@mumscards/engine-core';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import {
   applyKlondikeMove,
   canAutoComplete,
@@ -65,16 +67,23 @@ type Props = {
 
 export function KlondikeGameScreen({ gameId, mode }: Props) {
   const { height, width } = useWindowDimensions();
+  const router = useRouter();
   const orientation = width > height ? 'landscape' : 'portrait';
   const { hydrated, saves, saveGame, clearGame, settings } = useAppModel();
   const savedGame = saves.klondike;
   const resumeRestoredRef = useRef(false);
+  const createNewGame = useCallback(
+    () => createKlondikeGame(Math.random, { drawCount: settings.drawCount }),
+    [settings.drawCount],
+  );
   const [history, setHistory] = useState<HistoryState>(() =>
-    createHistoryState(mode === 'resume' && savedGame ? savedGame.state : createKlondikeGame()),
+    createHistoryState(mode === 'resume' && savedGame ? savedGame.state : createNewGame()),
   );
   const [selectedSource, setSelectedSource] = useState<KlondikeSource | null>(null);
+  const [selectedAtMs, setSelectedAtMs] = useState<number | null>(null);
   const [hintText, setHintText] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [offloadActive, setOffloadActive] = useState(false);
   const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
   const [zoneMeasurements, setZoneMeasurements] = useState<Record<string, ZoneMeasurement>>({});
   const [rootOffset, setRootOffset] = useState({ x: 0, y: 0 });
@@ -83,9 +92,9 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 
   useEffect(() => {
     resumeRestoredRef.current = false;
-    setHistory(createHistoryState(mode === 'resume' && savedGame ? savedGame.state : createKlondikeGame()));
+    setHistory(createHistoryState(mode === 'resume' && savedGame ? savedGame.state : createNewGame()));
     clearInteractionState();
-  }, [gameId, mode]);
+  }, [createNewGame, gameId, mode]);
 
   useEffect(() => {
     if (mode !== 'resume' || resumeRestoredRef.current || !savedGame) {
@@ -210,8 +219,44 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     refreshZoneMeasurements();
   }, [history.present, orientation, refreshZoneMeasurements, width, height]);
 
+  useEffect(() => {
+    if (!offloadActive) {
+      return;
+    }
+
+    const move = getNextFoundationMove(history.present, settings.emptyTableauPolicy);
+
+    if (!move) {
+      setOffloadActive(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setHistory((current) => {
+        const nextMove = getNextFoundationMove(current.present, settings.emptyTableauPolicy);
+
+        if (!nextMove) {
+          return current;
+        }
+
+        const next = applyKlondikeMove(current.present, nextMove, {
+          emptyTableauPolicy: settings.emptyTableauPolicy,
+        });
+
+        return {
+          past: [...current.past.slice(-49), current.present],
+          present: next,
+          future: [],
+        };
+      });
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [history.present, offloadActive, settings.emptyTableauPolicy]);
+
   function clearInteractionState() {
     setSelectedSource(null);
+    setSelectedAtMs(null);
     setHintText(null);
     setDragState(null);
     setExpandedTableauPile(null);
@@ -227,11 +272,13 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   }
 
   function startNewGame() {
-    setHistory(createHistoryState(createKlondikeGame()));
+    setOffloadActive(false);
+    setHistory(createHistoryState(createNewGame()));
     clearInteractionState();
   }
 
   function undo() {
+    setOffloadActive(false);
     setHistory((current) => {
       const previous = current.past[current.past.length - 1];
 
@@ -249,6 +296,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   }
 
   function redo() {
+    setOffloadActive(false);
     setHistory((current) => {
       const next = current.future[0];
 
@@ -266,10 +314,12 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   }
 
   function maybeAutoComplete(state: KlondikeState) {
-    return canAutoComplete(state) ? runAutoComplete(state) : state;
+    const options = { emptyTableauPolicy: settings.emptyTableauPolicy };
+    return canAutoComplete(state, options) ? runAutoComplete(state, options) : state;
   }
 
   function draw() {
+    setOffloadActive(false);
     const next =
       history.present.stock.length > 0
         ? drawFromStock(history.present)
@@ -279,16 +329,23 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   }
 
   function showHint() {
-    const hint = getHint(history.present, settings.hintMode);
+    const hint = getHint(history.present, settings.hintMode, {
+      emptyTableauPolicy: settings.emptyTableauPolicy,
+    });
     setHintText(hint ? hint.label : 'No legal move found.');
   }
 
   function handleMove(source: KlondikeSource, destination: KlondikeDestination) {
-    const next = applyKlondikeMove(history.present, {
-      kind: 'move',
-      source,
-      destination,
-    });
+    setOffloadActive(false);
+    const next = applyKlondikeMove(
+      history.present,
+      {
+        kind: 'move',
+        source,
+        destination,
+      },
+      { emptyTableauPolicy: settings.emptyTableauPolicy },
+    );
 
     if (JSON.stringify(next) === JSON.stringify(history.present)) {
       return;
@@ -298,15 +355,21 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   }
 
   function handleSourcePress(source: KlondikeSource) {
-    const legalDestinations = getLegalDestinations(history.present, source);
+    const legalDestinations = getLegalDestinations(
+      history.present,
+      source,
+      settings.emptyTableauPolicy,
+    );
 
     if (selectedSource) {
       if (JSON.stringify(selectedSource) === JSON.stringify(source)) {
         setSelectedSource(null);
+        setSelectedAtMs(null);
         return;
       }
 
       setSelectedSource(source);
+      setSelectedAtMs(Date.now());
       return;
     }
 
@@ -315,6 +378,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     }
 
     setSelectedSource(source);
+    setSelectedAtMs(Date.now());
   }
 
   function handleDestinationPress(destination: KlondikeDestination) {
@@ -322,13 +386,32 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
       return;
     }
 
+    if (
+      selectedSource.zone === 'tableau' &&
+      destination.zone === 'tableau' &&
+      selectedSource.pileIndex === destination.pileIndex
+    ) {
+      const elapsed = selectedAtMs === null ? 0 : Date.now() - selectedAtMs;
+
+      if (elapsed >= 500) {
+        setSelectedSource(null);
+        setSelectedAtMs(null);
+      }
+      return;
+    }
+
     handleMove(selectedSource, destination);
   }
 
   function handleDragStart(source: KlondikeSource, payload: DragGesturePayload) {
+    setOffloadActive(false);
     refreshZoneMeasurements();
 
-    const legalDestinations = getLegalDestinations(history.present, source);
+    const legalDestinations = getLegalDestinations(
+      history.present,
+      source,
+      settings.emptyTableauPolicy,
+    );
     const cards = getDragCards(history.present, source);
 
     if (cards.length === 0 || legalDestinations.length === 0) {
@@ -336,6 +419,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     }
 
     setSelectedSource(source);
+    setSelectedAtMs(Date.now());
     setHintText(null);
     setExpandedTableauPile(null);
     setDragState({
@@ -401,23 +485,41 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     setSelectedSource(null);
   }
 
+  function toggleOffload() {
+    if (offloadActive) {
+      setOffloadActive(false);
+      return;
+    }
+
+    clearInteractionState();
+    setOffloadActive(true);
+  }
+
   const highlightedDestinations = useMemo(() => {
     if (dragState) {
       return dragState.legalDestinations;
     }
 
     if (selectedSource) {
-      return getLegalDestinations(history.present, selectedSource);
+      return getLegalDestinations(
+        history.present,
+        selectedSource,
+        settings.emptyTableauPolicy,
+      );
     }
 
     return [];
-  }, [dragState, history.present, selectedSource]);
+  }, [dragState, history.present, selectedSource, settings.emptyTableauPolicy]);
 
-  const boardWidth = Math.min(width - spacing.lg * 2, 1180);
+  const availableWidth = Math.max(320, width - spacing.lg * 2);
   const cardWidth = orientation === 'landscape'
-    ? Math.max(72, Math.min(96, boardWidth / 10.5))
-    : Math.max(58, Math.min(88, boardWidth / 7.6));
+    ? Math.max(66, Math.min(96, availableWidth / 10.8))
+    : Math.max(48, Math.min(74, availableWidth / 8.2));
   const wasteWidth = Math.round(cardWidth * 1.6);
+  const rowGap = spacing.sm;
+  const topRowWidth = cardWidth * 5 + wasteWidth + rowGap * 5;
+  const tableauRowWidth = cardWidth * 7 + rowGap * 6;
+  const boardMinWidth = Math.max(topRowWidth, tableauRowWidth);
 
   const content = (
     <>
@@ -428,19 +530,44 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
         <View style={styles.headerActions}>
           <ActionButton label="New" onPress={startNewGame} />
           <ActionButton label="Draw" onPress={draw} />
+          <ActionButton
+            disabled={
+              !offloadActive &&
+              !getNextFoundationMove(history.present, settings.emptyTableauPolicy)
+            }
+            label={offloadActive ? 'Stop' : 'Offload'}
+            onPress={toggleOffload}
+          />
           <ActionButton label="Undo" onPress={undo} disabled={history.past.length === 0} />
           <ActionButton label="Redo" onPress={redo} disabled={history.future.length === 0} />
           <ActionButton label="Hint" onPress={showHint} />
+          <Pressable
+            accessibilityLabel="Open settings"
+            accessibilityRole="button"
+            onPress={() => router.push('/settings')}
+            style={({ pressed }) => [
+              styles.actionButton,
+              styles.actionIconButton,
+              pressed && styles.actionButtonPressed,
+            ]}
+          >
+            <Ionicons color={palette.ink} name="settings-outline" size={18} />
+          </Pressable>
         </View>
       </View>
 
       {hintText ? <Text style={styles.hintText}>{hintText}</Text> : null}
       {history.present.completed ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
 
-      <View style={[styles.board, { maxWidth: boardWidth }]}>
+      <ScrollView
+        contentContainerStyle={styles.horizontalBoardContent}
+        horizontal
+        nestedScrollEnabled
+        showsHorizontalScrollIndicator={false}
+      >
+        <View style={[styles.board, { minWidth: boardMinWidth }]}>
         <View style={styles.topRow}>
           <Zone
-            label="Stock"
             onPress={draw}
             width={cardWidth}
           >
@@ -453,7 +580,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
             />
           </Zone>
 
-          <Zone label="Waste" width={wasteWidth}>
+          <Zone width={wasteWidth}>
             <CardStack
               cardWidth={cardWidth}
               cards={history.present.waste.slice(-3).map((card) => ({ ...card, faceUp: true }))}
@@ -492,7 +619,6 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                 pileIndex,
               })}
               key={`foundation-${pileIndex}`}
-              label={`Foundation ${pileIndex + 1}`}
               onPress={() => handleDestinationPress({ zone: 'foundation', pileIndex })}
               onMeasureZone={measureZone}
               registerZone={registerZone}
@@ -544,7 +670,6 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                 pileIndex,
               })}
               key={`tableau-${pileIndex}`}
-              label={`Tableau ${pileIndex + 1}`}
               onPress={() => handleDestinationPress({ zone: 'tableau', pileIndex })}
               onMeasureZone={measureZone}
               registerZone={registerZone}
@@ -575,7 +700,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                 onCardHoldStart={() => {
                   setExpandedTableauPile(pileIndex);
                 }}
-                placeholderLabel="K"
+                placeholderLabel={settings.emptyTableauPolicy === 'king-only' ? 'K' : 'Any'}
                 selected={
                   selectedSource?.zone === 'tableau' && selectedSource.pileIndex === pileIndex
                 }
@@ -583,18 +708,17 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
             </Zone>
           ))}
         </View>
-      </View>
+        </View>
+      </ScrollView>
     </>
   );
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View onLayout={measureRoot} ref={rootRef} style={styles.screen}>
-        {orientation === 'portrait' ? (
-          <ScrollView contentContainerStyle={styles.scrollContent}>{content}</ScrollView>
-        ) : (
-          <View style={styles.landscapeShell}>{content}</View>
-        )}
+        <ScrollView contentContainerStyle={styles.scrollContent} nestedScrollEnabled>
+          {content}
+        </ScrollView>
 
         {dragState ? (
           <View pointerEvents="none" style={styles.dragOverlay}>
@@ -630,13 +754,23 @@ function createHistoryState(state: KlondikeState): HistoryState {
   };
 }
 
+function getNextFoundationMove(
+  state: KlondikeState,
+  emptyTableauPolicy: 'any' | 'king-only',
+) {
+  return getLegalMoves(state, { emptyTableauPolicy }).find(
+    (move) => move.kind === 'move' && move.destination.zone === 'foundation',
+  );
+}
+
 function getLegalDestinations(
   state: KlondikeState,
   source: KlondikeSource,
+  emptyTableauPolicy: 'any' | 'king-only',
 ): KlondikeDestination[] {
   const seen = new Set<string>();
 
-  return getLegalMoves(state).flatMap((move) => {
+  return getLegalMoves(state, { emptyTableauPolicy }).flatMap((move) => {
     if (move.kind !== 'move' || !matchesSource(move.source, source)) {
       return [];
     }
@@ -782,7 +916,6 @@ function Zone({
   children,
   destination,
   highlighted,
-  label,
   onPress,
   onMeasureZone,
   registerZone,
@@ -792,7 +925,6 @@ function Zone({
   children: ReactNode;
   destination?: KlondikeDestination;
   highlighted?: boolean;
-  label: string;
   onPress?(): void;
   onMeasureZone?: (zoneKey: string) => void;
   registerZone?: (zoneKey: string) => (node: RNView | null) => void;
@@ -818,7 +950,6 @@ function Zone({
         ]}
       >
         {children}
-        <Text style={styles.zoneLabel}>{label}</Text>
       </Pressable>
     </View>
   );
@@ -833,14 +964,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    alignItems: 'center',
     padding: spacing.md,
     gap: spacing.md,
   },
-  landscapeShell: {
-    flex: 1,
-    alignItems: 'center',
-    padding: spacing.md,
+  horizontalBoardContent: {
+    paddingBottom: spacing.sm,
   },
   boardHeader: {
     width: '100%',
@@ -877,6 +1005,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
+  actionIconButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 38,
+    paddingHorizontal: spacing.sm,
+  },
   actionButtonPressed: {
     transform: [{ scale: 0.98 }],
   },
@@ -900,20 +1034,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   board: {
-    width: '100%',
+    width: 'auto',
     gap: spacing.lg,
   },
   topRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     gap: spacing.sm,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
   },
   tableauRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     gap: spacing.sm,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
   },
   tableauRowLandscape: {
     alignItems: 'flex-start',
@@ -935,12 +1069,6 @@ const styles = StyleSheet.create({
   zoneActiveDrop: {
     backgroundColor: 'rgba(215, 181, 109, 0.18)',
     borderColor: palette.accent,
-  },
-  zoneLabel: {
-    color: palette.paper,
-    fontSize: typography.eyebrow,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
   },
   dragOverlay: {
     ...StyleSheet.absoluteFillObject,

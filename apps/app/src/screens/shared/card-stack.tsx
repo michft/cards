@@ -352,6 +352,8 @@ function DraggableCardLayer({
 }
 
 function renderFace(card: StackCard, width: number, height: number, selected?: boolean) {
+  const rankText = card.rank === 10 && width <= 56 ? 'x' : rankLabel(card.rank);
+
   return (
     <View
       style={[
@@ -364,8 +366,11 @@ function renderFace(card: StackCard, width: number, height: number, selected?: b
       ]}
     >
       <View style={styles.leadingCorner}>
-        <Text style={[styles.cornerRank, card.color === 'red' ? styles.red : styles.black]}>
-          {rankLabel(card.rank)}
+        <Text
+          numberOfLines={1}
+          style={[styles.cornerRank, card.color === 'red' ? styles.red : styles.black]}
+        >
+          {rankText}
         </Text>
         <Text style={[styles.leadingSuit, card.color === 'red' ? styles.red : styles.black]}>
           {suitSymbols[card.suit]}

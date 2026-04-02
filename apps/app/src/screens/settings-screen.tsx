@@ -1,4 +1,8 @@
-import type { KlondikeHintMode } from '@mumscards/game-klondike';
+import type {
+  KlondikeDrawCount,
+  KlondikeEmptyTableauPolicy,
+  KlondikeHintMode,
+} from '@mumscards/game-klondike';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,6 +27,36 @@ const hintModes: Array<{ value: KlondikeHintMode; label: string; description: st
   },
 ];
 
+const drawModes: Array<{ value: KlondikeDrawCount; label: string; description: string }> = [
+  {
+    value: 1,
+    label: 'Draw 1',
+    description: 'Draw one card from stock each time.',
+  },
+  {
+    value: 3,
+    label: 'Draw 3',
+    description: 'Draw three cards from stock each time.',
+  },
+];
+
+const emptyTableauModes: Array<{
+  value: KlondikeEmptyTableauPolicy;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'any',
+    label: 'Any',
+    description: 'Any face-up run root can move to an empty tableau.',
+  },
+  {
+    value: 'king-only',
+    label: 'King only',
+    description: 'Only Kings can move to an empty tableau.',
+  },
+];
+
 export function SettingsScreen() {
   const { settings, updateSettings } = useAppModel();
 
@@ -30,7 +64,32 @@ export function SettingsScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <Text style={styles.heading}>Klondike settings</Text>
-        <Text style={styles.subheading}>Draw-three is fixed for v1. Other rule sets are tracked in the roadmap.</Text>
+        <Text style={styles.subheading}>Rule toggles apply to new games.</Text>
+
+        <Text style={styles.sectionHeading}>Draw style</Text>
+        {drawModes.map((mode) => {
+          const active = settings.drawCount === mode.value;
+
+          return (
+            <Pressable
+              accessibilityRole="button"
+              key={mode.value}
+              onPress={() => void updateSettings({ drawCount: mode.value })}
+              style={({ pressed }) => [
+                styles.option,
+                active && styles.optionActive,
+                pressed && styles.optionPressed,
+              ]}
+            >
+              <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>{mode.label}</Text>
+              <Text style={[styles.optionDescription, active && styles.optionDescriptionActive]}>
+                {mode.description}
+              </Text>
+            </Pressable>
+          );
+        })}
+
+        <Text style={styles.sectionHeading}>Hint mode</Text>
 
         {hintModes.map((mode) => {
           const active = settings.hintMode === mode.value;
@@ -40,6 +99,29 @@ export function SettingsScreen() {
               accessibilityRole="button"
               key={mode.value}
               onPress={() => void updateSettings({ hintMode: mode.value })}
+              style={({ pressed }) => [
+                styles.option,
+                active && styles.optionActive,
+                pressed && styles.optionPressed,
+              ]}
+            >
+              <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>{mode.label}</Text>
+              <Text style={[styles.optionDescription, active && styles.optionDescriptionActive]}>
+                {mode.description}
+              </Text>
+            </Pressable>
+          );
+        })}
+
+        <Text style={styles.sectionHeading}>Empty tableau rule</Text>
+        {emptyTableauModes.map((mode) => {
+          const active = settings.emptyTableauPolicy === mode.value;
+
+          return (
+            <Pressable
+              accessibilityRole="button"
+              key={mode.value}
+              onPress={() => void updateSettings({ emptyTableauPolicy: mode.value })}
               style={({ pressed }) => [
                 styles.option,
                 active && styles.optionActive,
@@ -78,6 +160,12 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     lineHeight: 24,
     marginBottom: spacing.sm,
+  },
+  sectionHeading: {
+    color: palette.paper,
+    fontSize: typography.subtitle,
+    fontWeight: '700',
+    marginTop: spacing.sm,
   },
   option: {
     backgroundColor: palette.paper,
