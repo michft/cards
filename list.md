@@ -8,3 +8,8 @@ Top Solitaire Games by Popularity
     Yukon: Similar to Klondike but allows moving entire stacks, even if they aren't in sequence, allowing for more strategic play.
     Scorpion: A builder game similar to Spider that allows for moving stacks within the tableau.
     Clock: 
+
+
+
+
+    

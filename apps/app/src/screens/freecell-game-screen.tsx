@@ -51,6 +51,8 @@ export function FreeCellGameScreen({ mode }: Props) {
   const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const [offloadActive, setOffloadActive] = useState(false);
+  const [hintText, setHintText] = useState<string | null>(null);
+  const [hintCycleIndex, setHintCycleIndex] = useState(0);
   const availableWidth = Math.max(320, width - spacing.lg * 2);
   const cardWidth = Math.max(46, Math.min(72, availableWidth / 11.4));
   const rowGap = spacing.sm;
@@ -141,6 +143,8 @@ export function FreeCellGameScreen({ mode }: Props) {
     setSelectedSource(null);
     setExpandedTableauPile(null);
     setSnapshotPickerOpen(false);
+    setHintText(null);
+    setHintCycleIndex(0);
   }
 
   function commit(next: FreeCellState) {
@@ -255,6 +259,20 @@ export function FreeCellGameScreen({ mode }: Props) {
     setOffloadActive(true);
   }
 
+  function showHint() {
+    const hints = getFreeCellHints(history.present, settings.freeCellTableauBuildPolicy);
+
+    if (hints.length === 0) {
+      setHintText('No legal move found.');
+      setHintCycleIndex(0);
+      return;
+    }
+
+    const nextIndex = hintCycleIndex % hints.length;
+    setHintText(hints[nextIndex].label);
+    setHintCycleIndex((current) => (current + 1) % hints.length);
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.screen}>
@@ -347,6 +365,7 @@ export function FreeCellGameScreen({ mode }: Props) {
             />
             <ActionButton label="Undo" onPress={undo} disabled={history.past.length === 0} />
             <ActionButton label="Redo" onPress={redo} disabled={history.future.length === 0} />
+            <ActionButton label="Hint" onPress={showHint} />
             <ActionButton label="Rules" onPress={() => router.push('/rules?game=freecell')} />
             <Pressable
               accessibilityLabel="Open settings"
@@ -361,6 +380,8 @@ export function FreeCellGameScreen({ mode }: Props) {
               <Ionicons color={palette.ink} name="settings-outline" size={18} />
             </Pressable>
           </View>
+
+          {hintText ? <Text style={styles.hintText}>{hintText}</Text> : null}
 
           {settings.freeCellDebugTools && snapshotPickerOpen ? (
             <View style={styles.snapshotPanel}>
@@ -524,6 +545,169 @@ function getNextFreeCellFoundationMove(
   return null;
 }
 
+function getFreeCellHints(
+  state: FreeCellState,
+  policy: 'any' | 'red-black' | 'alternate-red-black' | 'suit-matching',
+): Array<{ label: string; source: FreeCellSource; destination: FreeCellDestination }> {
+  const hints: Array<{ label: string; source: FreeCellSource; destination: FreeCellDestination }> = [];
+  const seen = new Set<string>();
+
+  for (let pileIndex = 0; pileIndex < state.tableau.length; pileIndex += 1) {
+    const pile = state.tableau[pileIndex];
+
+    for (let cardIndex = 0; cardIndex < pile.length; cardIndex += 1) {
+      const source: FreeCellSource = { zone: 'tableau', pileIndex, cardIndex };
+      collectHintsForSource(state, source, policy, hints, seen);
+    }
+  }
+
+  for (let cellIndex = 0; cellIndex < state.freeCells.length; cellIndex += 1) {
+    if (!state.freeCells[cellIndex]) {
+      continue;
+    }
+
+    const source: FreeCellSource = { zone: 'cell', cellIndex };
+    collectHintsForSource(state, source, policy, hints, seen);
+  }
+
+  return hints.sort((left, right) => {
+    const priorityDiff = getHintPriority(left) - getHintPriority(right);
+
+    if (priorityDiff !== 0) {
+      return priorityDiff;
+    }
+
+    return left.label.localeCompare(right.label);
+  });
+}
+
+function getHintPriority(hint: {
+  source: FreeCellSource;
+  destination: FreeCellDestination;
+}): number {
+  if (hint.source.zone === 'tableau' && hint.destination.zone === 'tableau') {
+    return 0;
+  }
+
+  if (hint.source.zone === 'tableau' && hint.destination.zone === 'foundation') {
+    return 1;
+  }
+
+  if (hint.source.zone === 'tableau' && hint.destination.zone === 'cell') {
+    return 2;
+  }
+
+  if (hint.source.zone === 'cell' && hint.destination.zone === 'tableau') {
+    return 3;
+  }
+
+  if (hint.source.zone === 'cell' && hint.destination.zone === 'foundation') {
+    return 4;
+  }
+
+  return 5;
+}
+
+function collectHintsForSource(
+  state: FreeCellState,
+  source: FreeCellSource,
+  policy: 'any' | 'red-black' | 'alternate-red-black' | 'suit-matching',
+  hints: Array<{ label: string; source: FreeCellSource; destination: FreeCellDestination }>,
+  seen: Set<string>,
+) {
+  for (let pileIndex = 0; pileIndex < state.tableau.length; pileIndex += 1) {
+    const destination: FreeCellDestination = { zone: 'tableau', pileIndex };
+    maybeAddHint(state, source, destination, policy, hints, seen);
+  }
+
+  for (let cellIndex = 0; cellIndex < state.freeCells.length; cellIndex += 1) {
+    const destination: FreeCellDestination = { zone: 'cell', cellIndex };
+    maybeAddHint(state, source, destination, policy, hints, seen);
+  }
+
+  for (let pileIndex = 0; pileIndex < state.foundations.length; pileIndex += 1) {
+    const destination: FreeCellDestination = { zone: 'foundation', pileIndex };
+    maybeAddHint(state, source, destination, policy, hints, seen);
+  }
+}
+
+function maybeAddHint(
+  state: FreeCellState,
+  source: FreeCellSource,
+  destination: FreeCellDestination,
+  policy: 'any' | 'red-black' | 'alternate-red-black' | 'suit-matching',
+  hints: Array<{ label: string; source: FreeCellSource; destination: FreeCellDestination }>,
+  seen: Set<string>,
+) {
+  if (
+    (source.zone === 'tableau' &&
+      destination.zone === 'tableau' &&
+      source.pileIndex === destination.pileIndex) ||
+    (source.zone === 'cell' && destination.zone === 'cell' && source.cellIndex === destination.cellIndex)
+  ) {
+    return;
+  }
+
+  const next = applyFreeCellMove(state, source, destination, { tableauBuildPolicy: policy });
+
+  if (JSON.stringify(next) === JSON.stringify(state)) {
+    return;
+  }
+
+  const key = `${serializeFreeCellSource(source)}->${serializeFreeCellDestination(destination)}`;
+
+  if (seen.has(key)) {
+    return;
+  }
+
+  seen.add(key);
+  hints.push({
+    source,
+    destination,
+    label: `${formatFreeCellSource(source)} → ${formatFreeCellDestination(destination)}`,
+  });
+}
+
+function formatFreeCellSource(source: FreeCellSource): string {
+  if (source.zone === 'cell') {
+    return `Cell ${source.cellIndex + 1}`;
+  }
+
+  return `Tableau ${source.pileIndex + 1}`;
+}
+
+function formatFreeCellDestination(destination: FreeCellDestination): string {
+  if (destination.zone === 'cell') {
+    return `Cell ${destination.cellIndex + 1}`;
+  }
+
+  if (destination.zone === 'foundation') {
+    return `Foundation ${destination.pileIndex + 1}`;
+  }
+
+  return `Tableau ${destination.pileIndex + 1}`;
+}
+
+function serializeFreeCellSource(source: FreeCellSource): string {
+  if (source.zone === 'cell') {
+    return `cell:${source.cellIndex}`;
+  }
+
+  return `tableau:${source.pileIndex}:${source.cardIndex}`;
+}
+
+function serializeFreeCellDestination(destination: FreeCellDestination): string {
+  if (destination.zone === 'cell') {
+    return `cell:${destination.cellIndex}`;
+  }
+
+  if (destination.zone === 'foundation') {
+    return `foundation:${destination.pileIndex}`;
+  }
+
+  return `tableau:${destination.pileIndex}`;
+}
+
 function getFoundationDestinationForCard(state: FreeCellState, card: FreeCellState['tableau'][number][number]): number | null {
   for (let pileIndex = 0; pileIndex < state.foundations.length; pileIndex += 1) {
     const pile = state.foundations[pileIndex];
@@ -636,6 +820,11 @@ const styles = StyleSheet.create({
   },
   actionButtonDisabled: {
     opacity: 0.4,
+  },
+  hintText: {
+    color: '#f3e1b5',
+    fontSize: typography.body,
+    fontWeight: '600',
   },
   actionIconButton: {
     alignItems: 'center',

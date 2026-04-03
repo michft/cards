@@ -1,4 +1,6 @@
 import type { PersistedGameEnvelope } from '@mumscards/engine-core';
+import { rankLabel } from '@mumscards/engine-core';
+import type { PlayingCard } from '@mumscards/engine-core';
 import { Ionicons } from '@expo/vector-icons';
 import { createClockGame, drawClockStock, placeClockActiveCard, type ClockState } from '@mumscards/game-clock';
 import { useRouter } from 'expo-router';
@@ -20,7 +22,13 @@ type Props = {
   mode: 'new' | 'resume';
 };
 
-const hourLabels = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q'];
+const baseHourLabels = ['Q', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J'];
+const suitSymbols: Record<PlayingCard['suit'], string> = {
+  clubs: '♣',
+  diamonds: '♦',
+  hearts: '♥',
+  spades: '♠',
+};
 
 export function ClockGameScreen({ mode }: Props) {
   const router = useRouter();
@@ -43,10 +51,39 @@ export function ClockGameScreen({ mode }: Props) {
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const availableWidth = Math.max(320, width - spacing.lg * 2);
-  const cardWidth = Math.max(42, Math.min(68, availableWidth / 8.6));
-  const boardSize = cardWidth * 5.6;
-  const radiusPx = boardSize * 0.38;
-  const slotSize = cardWidth;
+  const cardWidth = Math.max(42, Math.min(64, availableWidth / 9));
+  const cardHeight = Math.round(cardWidth * 1.42);
+  const radialFanStep = Math.max(8, Math.round(cardWidth * 0.2));
+  const boardSize = cardWidth * 6.6;
+  const radiusPx = boardSize * 0.42;
+  const centerStockGap = spacing.xs;
+  const centerStockWidth = cardWidth * 2 + centerStockGap;
+  const centerStockHeight = cardHeight * 2 + centerStockGap;
+  const compactLabels = width < 420;
+  const hourLabels = compactLabels
+    ? baseHourLabels.map((label, index) => (index === 10 ? 'X' : label))
+    : baseHourLabels;
+  const stockPiles = history.present.stockPiles ?? deriveLegacyStockPiles(history.present.stock ?? []);
+  const placedCardIds = history.present.placedCardIds ?? [];
+  const activeSource =
+    history.present.activeSource
+    ?? (history.present.activeCard ? { zone: 'stock' as const, pileIndex: 0 } : null);
+  const completedStockPiles = history.present.completedStockPiles ?? [];
+  const returnedKingIds = history.present.returnedKingIds ?? [];
+  const maxHourDepth = history.present.hours.reduce((maxDepth, pile, hourIndex) => {
+    const activeFromThisHour = Boolean(
+      history.present.activeCard
+        && activeSource?.zone === 'hour'
+        && activeSource.hourIndex === hourIndex,
+    );
+    return Math.max(maxDepth, pile.length + (activeFromThisHour ? 1 : 0));
+  }, 1);
+  const outwardTail = radialFanStep * Math.max(0, maxHourDepth - 1);
+  const labelRadius = radiusPx + cardHeight * 0.55;
+  const contentRadius = Math.max(labelRadius + spacing.sm, radiusPx + outwardTail + cardHeight);
+  const canvasPadding = Math.max(spacing.md, Math.round(contentRadius - radiusPx));
+  const clockCanvasSize = boardSize + canvasPadding * 2;
+  const boardMargin = Math.max(spacing.sm, (availableWidth - clockCanvasSize) / 2);
 
   useEffect(() => {
     resumeRestoredRef.current = false;
@@ -69,7 +106,7 @@ export function ClockGameScreen({ mode }: Props) {
       return;
     }
 
-    if (history.present.won) {
+    if (history.present.won || history.present.lost) {
       void clearGame('clock');
       return;
     }
@@ -102,8 +139,8 @@ export function ClockGameScreen({ mode }: Props) {
     clearInteraction();
   }
 
-  function draw() {
-    const next = drawClockStock(history.present);
+  function drawFromStockPile(pileIndex: number) {
+    const next = drawClockStock(history.present, pileIndex);
 
     if (next !== history.present) {
       commit(next);
@@ -116,6 +153,41 @@ export function ClockGameScreen({ mode }: Props) {
     if (next !== history.present) {
       commit(next);
     }
+  }
+
+  function handleHourPress(hourIndex: number) {
+    const active = history.present.activeCard;
+
+    if (!active || getHourIndexForRank(active.rank) !== hourIndex) {
+      return;
+    }
+
+    place();
+  }
+
+  function handleKingPilePress() {
+    const active = history.present.activeCard;
+
+    if (!active || active.rank !== 13) {
+      return;
+    }
+
+    place();
+  }
+
+  function handleActivePress() {
+    const active = history.present.activeCard;
+
+    if (!active) {
+      return;
+    }
+
+    if (active.rank === 13) {
+      handleKingPilePress();
+      return;
+    }
+
+    handleHourPress(getHourIndexForRank(active.rank));
   }
 
   function undo() {
@@ -241,12 +313,6 @@ export function ClockGameScreen({ mode }: Props) {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.headerActions}>
             <ActionButton label="New" onPress={startNewGame} />
-            <ActionButton
-              label="Draw"
-              onPress={draw}
-              disabled={history.present.stock.length === 0 || history.present.activeCard !== null}
-            />
-            <ActionButton label="Place" onPress={place} disabled={!history.present.activeCard} />
             {settings.clockDebugTools ? (
               <ActionButton label="Save" onPress={saveCurrentState} />
             ) : null}
@@ -304,57 +370,216 @@ export function ClockGameScreen({ mode }: Props) {
           ) : null}
 
           {history.present.won ? <Text style={styles.winText}>Clock solved.</Text> : null}
+          {history.present.lost ? <Text style={styles.lossText}>Clock lost.</Text> : null}
 
-          <View style={styles.topRow}>
-            <CardStack
-              cardWidth={cardWidth}
-              cards={history.present.stock.slice(-1)}
-              onCardPress={draw}
-              placeholderLabel={String(history.present.stock.length)}
-              variant="back"
-            />
-            <CardStack
-              cardWidth={cardWidth}
-              cards={history.present.activeCard ? [history.present.activeCard] : []}
-              onCardPress={history.present.activeCard ? place : undefined}
-              placeholderLabel=""
-              selected={Boolean(history.present.activeCard)}
-            />
-            <CardStack
-              cardWidth={cardWidth}
-              cards={history.present.kings.slice(-1)}
-              placeholderLabel="K"
-            />
-          </View>
-
-          <View style={[styles.clockBoard, { height: boardSize, width: boardSize }]}>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            contentContainerStyle={[styles.clockBoardScrollContent, { paddingHorizontal: boardMargin }]}
+            showsHorizontalScrollIndicator={false}
+          >
+            <View style={[styles.clockBoard, { height: clockCanvasSize, width: clockCanvasSize }]}>
             {history.present.hours.map((pile, hourIndex) => {
               const angle = (Math.PI * 2 * hourIndex) / 12 - Math.PI / 2;
-              const center = boardSize / 2;
-              const x = center + Math.cos(angle) * radiusPx - slotSize / 2;
-              const y = center + Math.sin(angle) * radiusPx - slotSize / 2;
+              const center = clockCanvasSize / 2;
+              const dx = Math.cos(angle);
+              const dy = Math.sin(angle);
+              const activeFromThisHour = Boolean(
+                history.present.activeCard
+                && activeSource?.zone === 'hour'
+                && activeSource.hourIndex === hourIndex,
+              );
+              const renderedCards = activeFromThisHour && history.present.activeCard
+                ? [...pile, history.present.activeCard]
+                : pile;
+              const topX = center + dx * radiusPx - cardWidth / 2;
+              const topY = center + dy * radiusPx - cardHeight / 2;
+              const baseX = topX + dx * radialFanStep * Math.max(0, renderedCards.length - 1);
+              const baseY = topY + dy * radialFanStep * Math.max(0, renderedCards.length - 1);
+              const slotLeft = Math.min(topX, baseX);
+              const slotTop = Math.min(topY, baseY);
+              const slotWidth = cardWidth + Math.abs(topX - baseX);
+              const slotHeight = cardHeight + Math.abs(topY - baseY);
 
               return (
-                <View
+                <Pressable
+                  accessibilityRole="button"
                   key={`clock-hour-${hourIndex}`}
+                  onPress={() => handleHourPress(hourIndex)}
                   style={[
                     styles.hourSlot,
                     {
-                      left: x,
-                      top: y,
-                      width: slotSize,
+                      height: slotHeight,
+                      left: slotLeft,
+                      top: slotTop,
+                      width: slotWidth,
                     },
                   ]}
                 >
-                  <CardStack cardWidth={cardWidth} cards={pile.slice(-1)} placeholderLabel={hourLabels[hourIndex]} />
-                </View>
+                  {renderedCards.length === 0 ? (
+                    <View
+                      style={[
+                        styles.hourPlaceholder,
+                        {
+                          height: cardHeight,
+                          left: 0,
+                          top: 0,
+                          width: cardWidth,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.hourPlaceholderText}>{hourLabels[hourIndex]}</Text>
+                    </View>
+                  ) : (
+                    renderedCards.map((card, cardIndex) => {
+                      const isActiveCard = activeFromThisHour && cardIndex === renderedCards.length - 1;
+                      const showFace = isActiveCard || placedCardIds.includes(card.id);
+
+                      return (
+                        <View
+                          key={`${card.id}-${isActiveCard ? 'active' : 'pile'}`}
+                          style={[
+                            showFace ? styles.clockPlacedFaceCard : styles.clockBackCard,
+                            {
+                              height: cardHeight,
+                              left:
+                                baseX
+                                - slotLeft
+                                - dx * radialFanStep * (renderedCards.length - 1 - cardIndex),
+                              top:
+                                baseY
+                                - slotTop
+                                - dy * radialFanStep * (renderedCards.length - 1 - cardIndex),
+                              width: cardWidth,
+                              zIndex: cardIndex + 1,
+                            },
+                          ]}
+                        >
+                          {showFace ? (
+                            <>
+                              <Text
+                                style={[
+                                  styles.faceRank,
+                                  card.color === 'red' ? styles.faceRed : styles.faceBlack,
+                                ]}
+                              >
+                                {rankLabel(card.rank)}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.faceSuit,
+                                  card.color === 'red' ? styles.faceRed : styles.faceBlack,
+                                ]}
+                              >
+                                {suitSymbols[card.suit]}
+                              </Text>
+                            </>
+                          ) : null}
+                        </View>
+                      );
+                    })
+                  )}
+                </Pressable>
               );
             })}
-          </View>
+
+            <View
+              style={[
+                styles.centerStockGrid,
+                {
+                  height: centerStockHeight,
+                  transform: [
+                    { translateX: -centerStockWidth / 2 },
+                    { translateY: -centerStockHeight / 2 },
+                  ],
+                  width: centerStockWidth,
+                },
+              ]}
+            >
+              {Array.from({ length: 4 }, (_, pileIndex) => {
+                const pile = stockPiles[pileIndex] ?? [];
+                const top = pile[pile.length - 1];
+                const stockActiveCard = activeSource?.zone === 'stock' && activeSource.pileIndex === pileIndex
+                  ? history.present.activeCard
+                  : null;
+                const kingReturnTarget = Boolean(
+                  history.present.activeCard
+                    && history.present.activeCard.rank === 13
+                    && history.present.activeStockPileIndex === pileIndex,
+                );
+                const canStartFromPile = Boolean(
+                  history.present.activeCard === null
+                    && top
+                    && top.rank !== 13
+                    && !completedStockPiles.includes(pileIndex),
+                );
+                const topIsReturnedKing = Boolean(top && returnedKingIds.includes(top.id));
+                const variant = stockActiveCard || topIsReturnedKing ? 'face' : 'back';
+
+                return (
+                  <CardStack
+                    cardWidth={cardWidth}
+                    cards={stockActiveCard ? [stockActiveCard] : top ? [top] : []}
+                    key={`clock-stock-pile-${pileIndex}`}
+                    onCardPress={
+                      stockActiveCard
+                        ? handleActivePress
+                        : kingReturnTarget
+                          ? handleKingPilePress
+                        : canStartFromPile
+                          ? () => drawFromStockPile(pileIndex)
+                        : undefined
+                    }
+                    placeholderLabel=""
+                    selected={Boolean(stockActiveCard)}
+                    variant={variant}
+                  />
+                );
+              })}
+            </View>
+
+            {history.present.hours.map((_, hourIndex) => {
+              const angle = (Math.PI * 2 * hourIndex) / 12 - Math.PI / 2;
+              const center = clockCanvasSize / 2;
+              const x = center + Math.cos(angle) * labelRadius;
+              const y = center + Math.sin(angle) * labelRadius;
+
+              return (
+                <Text
+                  key={`clock-label-${hourIndex}`}
+                  style={[
+                    styles.clockHintLabel,
+                    {
+                      left: x - 8,
+                      top: y - 10,
+                    },
+                  ]}
+                >
+                  {hourLabels[hourIndex]}
+                </Text>
+              );
+            })}
+            </View>
+          </ScrollView>
         </ScrollView>
       </View>
     </SafeAreaView>
   );
+}
+
+function getHourIndexForRank(rank: number): number {
+  if (rank === 12) {
+    return 0;
+  }
+
+  return rank;
+}
+
+function deriveLegacyStockPiles(legacyStock: PlayingCard[]): PlayingCard[][] {
+  return [0, 1, 2, 3].map((index) => {
+    const card = legacyStock[legacyStock.length - 1 - index];
+    return card ? [card] : [];
+  });
 }
 
 function createHistoryState(state: ClockState): HistoryState {
@@ -399,8 +624,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: spacing.xl + spacing.lg,
-    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.xs,
     paddingBottom: spacing.md,
     gap: spacing.md,
   },
@@ -493,21 +718,87 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: '600',
   },
-  topRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
   clockBoard: {
-    alignSelf: 'center',
-    marginTop: spacing.md,
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
     position: 'relative',
+  },
+  clockBoardScrollContent: {
+    paddingBottom: spacing.xs,
+  },
+  centerStockGrid: {
+    left: '50%',
+    position: 'absolute',
+    top: '50%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    zIndex: 20,
   },
   hourSlot: {
     position: 'absolute',
   },
+  clockPlacedFaceCard: {
+    alignItems: 'flex-start',
+    backgroundColor: palette.paper,
+    borderColor: '#ddcfb2',
+    borderRadius: radius.md,
+    borderWidth: 2,
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    position: 'absolute',
+  },
+  clockBackCard: {
+    backgroundColor: '#2f5e50',
+    borderColor: '#dac897',
+    borderRadius: radius.md,
+    borderWidth: 2,
+    position: 'absolute',
+  },
+  faceRank: {
+    fontSize: typography.body,
+    fontWeight: '700',
+  },
+  faceSuit: {
+    alignSelf: 'flex-end',
+    fontSize: typography.subtitle,
+    fontWeight: '700',
+  },
+  faceRed: {
+    color: palette.red,
+  },
+  faceBlack: {
+    color: palette.black,
+  },
+  hourPlaceholder: {
+    alignItems: 'center',
+    borderColor: '#6c8c80',
+    borderRadius: radius.md,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    justifyContent: 'center',
+    position: 'absolute',
+  },
+  hourPlaceholderText: {
+    color: '#bdd1c5',
+    fontSize: typography.eyebrow,
+    fontWeight: '700',
+  },
+  clockHintLabel: {
+    color: '#d9caa7',
+    fontSize: typography.eyebrow,
+    fontWeight: '700',
+    position: 'absolute',
+    zIndex: 30,
+  },
   winText: {
     color: '#f3e1b5',
+    fontSize: typography.subtitle,
+    fontWeight: '700',
+  },
+  lossText: {
+    color: '#f1d0c2',
     fontSize: typography.subtitle,
     fontWeight: '700',
   },

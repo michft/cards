@@ -19,38 +19,78 @@ export function createClockGame(random = Math.random): ClockState {
     }
   }
 
+  const stockPiles = [[], [], [], []] as PlayingCard[][];
+
+  for (let pileIndex = 0; pileIndex < 4; pileIndex += 1) {
+    const card = deck.pop();
+
+    if (!card) {
+      throw new Error('Deck exhausted while dealing Clock stock piles.');
+    }
+
+    stockPiles[pileIndex].push(card);
+  }
+
   return {
     gameId: 'clock',
     hours,
-    stock: deck,
+    stockPiles,
+    stock: [],
     activeCard: null,
+    activeSource: null,
+    activeStockPileIndex: null,
+    completedStockPiles: [],
     kings: [],
+    returnedKingIds: [],
+    placedCardIds: [],
     won: false,
+    lost: false,
   };
 }
 
-export function drawClockStock(state: ClockState): ClockState {
-  if (state.activeCard || state.stock.length === 0 || state.won) {
+export function drawClockStock(state: ClockState, pileIndex: number): ClockState {
+  const normalized = normalizeClockState(state);
+
+  if (normalized.activeCard || normalized.won || normalized.lost) {
     return state;
   }
 
-  const next = cloneState(state);
-  const card = next.stock.pop();
+  if (pileIndex < 0 || pileIndex >= normalized.stockPiles.length) {
+    return state;
+  }
+
+  if (normalized.completedStockPiles.includes(pileIndex)) {
+    return state;
+  }
+
+  const next = cloneState(normalized);
+  const sourcePile = next.stockPiles[pileIndex];
+  const top = sourcePile[sourcePile.length - 1];
+
+  if (!top || top.rank === 13) {
+    return state;
+  }
+
+  const card = sourcePile.pop();
 
   if (!card) {
     return state;
   }
 
   next.activeCard = card;
-  return withWinState(next);
+  next.activeSource = { zone: 'stock', pileIndex };
+  next.activeStockPileIndex = pileIndex;
+  return withOutcomeState(next);
 }
 
 export function placeClockActiveCard(state: ClockState): ClockState {
-  if (!state.activeCard || state.won) {
+  const normalized = normalizeClockState(state);
+
+  if (!normalized.activeCard || normalized.won || normalized.lost) {
     return state;
   }
 
-  const next = cloneState(state);
+  const next = cloneState(normalized);
   const active = next.activeCard;
 
   if (!active) {
@@ -58,39 +98,71 @@ export function placeClockActiveCard(state: ClockState): ClockState {
   }
 
   next.activeCard = null;
+  next.activeSource = null;
 
   if (active.rank === 13) {
+    if (next.activeStockPileIndex === null) {
+      return state;
+    }
+
+    const originPile = next.stockPiles[next.activeStockPileIndex];
+    originPile.push(active);
+    if (!next.completedStockPiles.includes(next.activeStockPileIndex)) {
+      next.completedStockPiles.push(next.activeStockPileIndex);
+    }
     next.kings.push(active);
-    return withWinState(next);
+    next.returnedKingIds = [...next.returnedKingIds, active.id];
+    next.placedCardIds = [...(next.placedCardIds ?? []), active.id];
+    next.activeStockPileIndex = null;
+    return withOutcomeState(next);
   }
 
-  const pileIndex = active.rank - 1;
+  const pileIndex = getHourIndexForRank(active.rank);
   const destination = next.hours[pileIndex];
 
   destination.unshift(active);
+  next.placedCardIds = [...(next.placedCardIds ?? []), active.id];
 
   if (destination.length > 1) {
     const revealed = destination.pop();
 
     if (revealed) {
       next.activeCard = revealed;
+      next.activeSource = { zone: 'hour', hourIndex: pileIndex };
     }
   }
 
-  return withWinState(next);
+  return withOutcomeState(next);
 }
 
-function withWinState(state: ClockState): ClockState {
-  const allPlaced = state.stock.length === 0 && state.activeCard === null;
-  const allKingsFound = state.kings.length === 4;
+function withOutcomeState(state: ClockState): ClockState {
+  const allChainsCompleted = state.completedStockPiles.length === 4;
+  const allKingsFound = state.kings.length === 4 && state.returnedKingIds.length === 4;
+  const noActive = state.activeCard === null;
+  const unrevealedCardsRemain = state.hours.some((pile) =>
+    pile.some((card) => !state.placedCardIds.includes(card.id)),
+  );
 
-  if (!allPlaced || !allKingsFound) {
-    return state;
+  if (allKingsFound && noActive && unrevealedCardsRemain) {
+    return {
+      ...state,
+      won: false,
+      lost: true,
+    };
+  }
+
+  if (allChainsCompleted && allKingsFound && noActive && !unrevealedCardsRemain) {
+    return {
+      ...state,
+      won: true,
+      lost: false,
+    };
   }
 
   return {
     ...state,
-    won: true,
+    won: false,
+    lost: false,
   };
 }
 
@@ -98,10 +170,25 @@ function cloneState(state: ClockState): ClockState {
   return {
     ...state,
     hours: state.hours.map((pile) => pile.map((card) => ({ ...card }))),
-    stock: state.stock.map((card) => ({ ...card })),
+    stockPiles: state.stockPiles.map((pile) => pile.map((card) => ({ ...card }))),
+    stock: state.stock ? state.stock.map((card) => ({ ...card })) : [],
     activeCard: state.activeCard ? { ...state.activeCard } : null,
+    activeSource: state.activeSource ? { ...state.activeSource } : null,
+    activeStockPileIndex: state.activeStockPileIndex ?? null,
+    completedStockPiles: [...(state.completedStockPiles ?? [])],
     kings: state.kings.map((card) => ({ ...card })),
+    returnedKingIds: [...(state.returnedKingIds ?? [])],
+    placedCardIds: [...(state.placedCardIds ?? [])],
+    lost: state.lost ?? false,
   };
+}
+
+function getHourIndexForRank(rank: number): number {
+  if (rank === 12) {
+    return 0;
+  }
+
+  return rank;
 }
 
 function shuffle<T>(items: T[], random: () => number): T[] {
@@ -113,4 +200,34 @@ function shuffle<T>(items: T[], random: () => number): T[] {
   }
 
   return next;
+}
+
+function normalizeClockState(state: ClockState): ClockState {
+  if (state.stockPiles && state.stockPiles.length === 4) {
+    return {
+      ...state,
+      activeStockPileIndex: state.activeStockPileIndex ?? null,
+      completedStockPiles: state.completedStockPiles ?? [],
+      returnedKingIds: state.returnedKingIds ?? [],
+      placedCardIds: state.placedCardIds ?? [],
+      lost: state.lost ?? false,
+    };
+  }
+
+  const legacyStock = state.stock ?? [];
+  const stockPiles = [0, 1, 2, 3].map((index) => {
+    const card = legacyStock[legacyStock.length - 1 - index];
+    return card ? [{ ...card }] : [];
+  });
+
+  return {
+    ...state,
+    stockPiles,
+    stock: [],
+    activeStockPileIndex: null,
+    completedStockPiles: [],
+    returnedKingIds: [],
+    placedCardIds: state.placedCardIds ?? [],
+    lost: false,
+  };
 }
