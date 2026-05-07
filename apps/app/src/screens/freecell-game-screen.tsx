@@ -14,9 +14,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
+import { cloneGameState } from './shared/clone-game-state';
 import { CardStack } from './shared/card-stack';
+import { ShortcutPressable } from './shared/shortcut-pressable';
+import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
 type HistoryState = {
+  initial: FreeCellState;
   past: FreeCellState[];
   present: FreeCellState;
   future: FreeCellState[];
@@ -127,6 +131,7 @@ export function FreeCellGameScreen({ mode }: Props) {
         }
 
         return {
+          initial: current.initial,
           past: [...current.past.slice(-49), current.present],
           present: nextWithRules,
           future: [],
@@ -149,6 +154,7 @@ export function FreeCellGameScreen({ mode }: Props) {
 
   function commit(next: FreeCellState) {
     setHistory((current) => ({
+      initial: current.initial,
       past: [...current.past.slice(-49), current.present],
       present: next,
       future: [],
@@ -161,6 +167,11 @@ export function FreeCellGameScreen({ mode }: Props) {
     clearInteraction();
   }
 
+  function restartGame() {
+    setHistory((current) => createHistoryState(current.initial));
+    clearInteraction();
+  }
+
   function undo() {
     setHistory((current) => {
       const previous = current.past[current.past.length - 1];
@@ -170,6 +181,7 @@ export function FreeCellGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: current.past.slice(0, -1),
         present: previous,
         future: [current.present, ...current.future].slice(0, 50),
@@ -187,6 +199,7 @@ export function FreeCellGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: [...current.past, current.present].slice(-50),
         present: next,
         future: current.future.slice(1),
@@ -194,6 +207,14 @@ export function FreeCellGameScreen({ mode }: Props) {
     });
     clearInteraction();
   }
+
+  useWebGameShortcuts({
+    onUndo: undo,
+    onRedo: redo,
+    onNew: startNewGame,
+    onRestart: restartGame,
+    onOffload: toggleOffload,
+  });
 
   function saveCurrentState() {
     const envelope: PersistedGameEnvelope<FreeCellState> = {
@@ -347,7 +368,8 @@ export function FreeCellGameScreen({ mode }: Props) {
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.headerActions}>
-            <ActionButton label="New" onPress={startNewGame} />
+            <ActionButton label="New" onPress={startNewGame} shortcut="Cmd+N" />
+            <ActionButton label="Restart" onPress={restartGame} shortcut="Cmd+R" />
             {settings.freeCellDebugTools ? (
               <ActionButton label="Save" onPress={saveCurrentState} />
             ) : null}
@@ -362,9 +384,20 @@ export function FreeCellGameScreen({ mode }: Props) {
               label={offloadActive ? 'Stop' : 'Offload'}
               onPress={toggleOffload}
               disabled={!offloadActive && !getNextFreeCellFoundationMove(history.present)}
+              shortcut="Cmd+A"
             />
-            <ActionButton label="Undo" onPress={undo} disabled={history.past.length === 0} />
-            <ActionButton label="Redo" onPress={redo} disabled={history.future.length === 0} />
+            <ActionButton
+              label="Undo"
+              onPress={undo}
+              disabled={history.past.length === 0}
+              shortcut="Cmd+Z"
+            />
+            <ActionButton
+              label="Redo"
+              onPress={redo}
+              disabled={history.future.length === 0}
+              shortcut="Cmd+Shift+Z"
+            />
             <ActionButton label="Hint" onPress={showHint} />
             <ActionButton label="Rules" onPress={() => router.push('/rules?game=freecell')} />
             <Pressable
@@ -497,9 +530,12 @@ export function FreeCellGameScreen({ mode }: Props) {
 }
 
 function createHistoryState(state: FreeCellState): HistoryState {
+  const initial = cloneGameState(state);
+
   return {
+    initial,
     past: [],
-    present: state,
+    present: cloneGameState(initial),
     future: [],
   };
 }
@@ -735,16 +771,18 @@ function ActionButton({
   disabled,
   label,
   onPress,
+  shortcut,
 }: {
   disabled?: boolean;
   label: string;
   onPress(): void;
+  shortcut?: string;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
+    <ShortcutPressable
       disabled={disabled}
       onPress={onPress}
+      shortcut={shortcut}
       style={({ pressed }) => [
         styles.actionButton,
         disabled && styles.actionButtonDisabled,
@@ -752,7 +790,7 @@ function ActionButton({
       ]}
     >
       <Text style={styles.actionButtonText}>{label}</Text>
-    </Pressable>
+    </ShortcutPressable>
   );
 }
 

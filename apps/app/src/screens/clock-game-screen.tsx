@@ -10,9 +10,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
+import { cloneGameState } from './shared/clone-game-state';
 import { CardStack } from './shared/card-stack';
+import { ShortcutPressable } from './shared/shortcut-pressable';
+import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
 type HistoryState = {
+  initial: ClockState;
   past: ClockState[];
   present: ClockState;
   future: ClockState[];
@@ -127,6 +131,7 @@ export function ClockGameScreen({ mode }: Props) {
 
   function commit(next: ClockState) {
     setHistory((current) => ({
+      initial: current.initial,
       past: [...current.past.slice(-49), current.present],
       present: next,
       future: [],
@@ -136,6 +141,11 @@ export function ClockGameScreen({ mode }: Props) {
 
   function startNewGame() {
     setHistory(createHistoryState(createClockGame(Math.random)));
+    clearInteraction();
+  }
+
+  function restartGame() {
+    setHistory((current) => createHistoryState(current.initial));
     clearInteraction();
   }
 
@@ -199,6 +209,7 @@ export function ClockGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: current.past.slice(0, -1),
         present: previous,
         future: [current.present, ...current.future].slice(0, 50),
@@ -216,6 +227,7 @@ export function ClockGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: [...current.past, current.present].slice(-50),
         present: next,
         future: current.future.slice(1),
@@ -223,6 +235,13 @@ export function ClockGameScreen({ mode }: Props) {
     });
     clearInteraction();
   }
+
+  useWebGameShortcuts({
+    onUndo: undo,
+    onRedo: redo,
+    onNew: startNewGame,
+    onRestart: restartGame,
+  });
 
   function saveCurrentState() {
     const envelope: PersistedGameEnvelope<ClockState> = {
@@ -312,7 +331,8 @@ export function ClockGameScreen({ mode }: Props) {
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.headerActions}>
-            <ActionButton label="New" onPress={startNewGame} />
+            <ActionButton label="New" onPress={startNewGame} shortcut="Cmd+N" />
+            <ActionButton label="Restart" onPress={restartGame} shortcut="Cmd+R" />
             {settings.clockDebugTools ? (
               <ActionButton label="Save" onPress={saveCurrentState} />
             ) : null}
@@ -323,8 +343,18 @@ export function ClockGameScreen({ mode }: Props) {
                 disabled={snapshots.clock.length === 0}
               />
             ) : null}
-            <ActionButton label="Undo" onPress={undo} disabled={history.past.length === 0} />
-            <ActionButton label="Redo" onPress={redo} disabled={history.future.length === 0} />
+            <ActionButton
+              label="Undo"
+              onPress={undo}
+              disabled={history.past.length === 0}
+              shortcut="Cmd+Z"
+            />
+            <ActionButton
+              label="Redo"
+              onPress={redo}
+              disabled={history.future.length === 0}
+              shortcut="Cmd+Shift+Z"
+            />
             <ActionButton label="Rules" onPress={() => router.push('/rules?game=clock')} />
             <Pressable
               accessibilityLabel="Open settings"
@@ -583,9 +613,12 @@ function deriveLegacyStockPiles(legacyStock: PlayingCard[]): PlayingCard[][] {
 }
 
 function createHistoryState(state: ClockState): HistoryState {
+  const initial = cloneGameState(state);
+
   return {
+    initial,
     past: [],
-    present: state,
+    present: cloneGameState(initial),
     future: [],
   };
 }
@@ -594,16 +627,18 @@ function ActionButton({
   disabled,
   label,
   onPress,
+  shortcut,
 }: {
   disabled?: boolean;
   label: string;
   onPress(): void;
+  shortcut?: string;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
+    <ShortcutPressable
       disabled={disabled}
       onPress={onPress}
+      shortcut={shortcut}
       style={({ pressed }) => [
         styles.actionButton,
         disabled && styles.actionButtonDisabled,
@@ -611,7 +646,7 @@ function ActionButton({
       ]}
     >
       <Text style={styles.actionButtonText}>{label}</Text>
-    </Pressable>
+    </ShortcutPressable>
   );
 }
 

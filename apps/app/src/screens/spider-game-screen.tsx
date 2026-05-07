@@ -9,9 +9,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { CardStack } from './shared/card-stack';
+import { cloneGameState } from './shared/clone-game-state';
+import { ShortcutPressable } from './shared/shortcut-pressable';
+import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 import { palette, radius, spacing, typography } from '../theme';
 
 type SpiderHistoryState = {
+  initial: SpiderState;
   past: SpiderState[];
   present: SpiderState;
   future: SpiderState[];
@@ -98,6 +102,7 @@ export function SpiderGameScreen({ mode }: Props) {
 
   function commit(next: SpiderState) {
     setHistory((current) => ({
+      initial: current.initial,
       past: [...current.past.slice(-49), current.present],
       present: next,
       future: [],
@@ -118,6 +123,14 @@ export function SpiderGameScreen({ mode }: Props) {
     setSnapshotPickerOpen(false);
   }
 
+  function restartGame() {
+    setHistory((current) => createSpiderHistoryState(current.initial));
+    setSelectedSource(null);
+    setGameMenuOpen(false);
+    setExpandedTableauPile(null);
+    setSnapshotPickerOpen(false);
+  }
+
   function undo() {
     setHistory((current) => {
       const previous = current.past[current.past.length - 1];
@@ -127,6 +140,7 @@ export function SpiderGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: current.past.slice(0, -1),
         present: previous,
         future: [current.present, ...current.future].slice(0, 50),
@@ -147,6 +161,7 @@ export function SpiderGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: [...current.past, current.present].slice(-50),
         present: next,
         future: current.future.slice(1),
@@ -157,6 +172,13 @@ export function SpiderGameScreen({ mode }: Props) {
     setExpandedTableauPile(null);
     setSnapshotPickerOpen(false);
   }
+
+  useWebGameShortcuts({
+    onUndo: undo,
+    onRedo: redo,
+    onNew: startNewGame,
+    onRestart: restartGame,
+  });
 
   function saveCurrentState() {
     const envelope: PersistedGameEnvelope<SpiderState> = {
@@ -320,13 +342,20 @@ export function SpiderGameScreen({ mode }: Props) {
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.switchRow}>
-            <Pressable
-              accessibilityRole="button"
+            <ShortcutPressable
               onPress={startNewGame}
+              shortcut="Cmd+N"
               style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
             >
               <Text style={styles.switchButtonText}>New</Text>
-            </Pressable>
+            </ShortcutPressable>
+            <ShortcutPressable
+              onPress={restartGame}
+              shortcut="Cmd+R"
+              style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.switchButtonText}>Restart</Text>
+            </ShortcutPressable>
             {settings.spiderDebugTools ? (
               <Pressable
                 accessibilityRole="button"
@@ -350,10 +379,10 @@ export function SpiderGameScreen({ mode }: Props) {
                 <Text style={styles.switchButtonText}>Load</Text>
               </Pressable>
             ) : null}
-            <Pressable
-              accessibilityRole="button"
+            <ShortcutPressable
               disabled={history.past.length === 0}
               onPress={undo}
+              shortcut="Cmd+Z"
               style={({ pressed }) => [
                 styles.switchButton,
                 history.past.length === 0 && styles.switchButtonDisabled,
@@ -361,11 +390,11 @@ export function SpiderGameScreen({ mode }: Props) {
               ]}
             >
               <Text style={styles.switchButtonText}>Undo</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+            </ShortcutPressable>
+            <ShortcutPressable
               disabled={history.future.length === 0}
               onPress={redo}
+              shortcut="Cmd+Shift+Z"
               style={({ pressed }) => [
                 styles.switchButton,
                 history.future.length === 0 && styles.switchButtonDisabled,
@@ -373,7 +402,7 @@ export function SpiderGameScreen({ mode }: Props) {
               ]}
             >
               <Text style={styles.switchButtonText}>Redo</Text>
-            </Pressable>
+            </ShortcutPressable>
             <Pressable
               accessibilityRole="button"
               onPress={() => router.push('/rules?game=spider')}
@@ -491,9 +520,12 @@ export function SpiderGameScreen({ mode }: Props) {
 }
 
 function createSpiderHistoryState(state: SpiderState): SpiderHistoryState {
+  const initial = cloneGameState(state);
+
   return {
+    initial,
     past: [],
-    present: state,
+    present: cloneGameState(initial),
     future: [],
   };
 }

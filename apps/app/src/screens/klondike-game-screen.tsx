@@ -32,9 +32,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
+import { cloneGameState } from './shared/clone-game-state';
 import { CardStack, type DragPayload as DragGesturePayload } from './shared/card-stack';
+import { ShortcutPressable } from './shared/shortcut-pressable';
+import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
 type HistoryState = {
+  initial: KlondikeState;
   past: KlondikeState[];
   present: KlondikeState;
   future: KlondikeState[];
@@ -154,6 +158,10 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 
     const handler = (event: KeyboardEvent) => {
       if ((event.target as HTMLElement | null)?.tagName === 'INPUT') {
+        return;
+      }
+
+      if (event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
 
@@ -288,6 +296,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
         });
 
         return {
+          initial: current.initial,
           past: [...current.past.slice(-49), current.present],
           present: next,
           future: [],
@@ -311,6 +320,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 
   function commit(next: KlondikeState) {
     setHistory((current) => ({
+      initial: current.initial,
       past: [...current.past.slice(-49), current.present],
       present: next,
       future: [],
@@ -321,6 +331,12 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   function startNewGame() {
     setOffloadActive(false);
     setHistory(createHistoryState(createNewGame()));
+    clearInteractionState();
+  }
+
+  function restartGame() {
+    setOffloadActive(false);
+    setHistory((current) => createHistoryState(current.initial));
     clearInteractionState();
   }
 
@@ -348,6 +364,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: current.past.slice(0, -1),
         present: previous,
         future: [current.present, ...current.future].slice(0, 50),
@@ -366,6 +383,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: [...current.past, current.present].slice(-50),
         present: next,
         future: current.future.slice(1),
@@ -373,6 +391,14 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     });
     clearInteractionState();
   }
+
+  useWebGameShortcuts({
+    onUndo: undo,
+    onRedo: redo,
+    onNew: startNewGame,
+    onRestart: restartGame,
+    onOffload: toggleOffload,
+  });
 
   function maybeAutoComplete(state: KlondikeState) {
     const options = { emptyTableauPolicy: settings.emptyTableauPolicy };
@@ -611,7 +637,8 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     <>
       <View style={[styles.boardHeader, orientation === 'landscape' && styles.boardHeaderLandscape]}>
         <View style={styles.headerActions}>
-          <ActionButton label="New" onPress={startNewGame} />
+          <ActionButton label="New" onPress={startNewGame} shortcut="Cmd+N" />
+          <ActionButton label="Restart" onPress={restartGame} shortcut="Cmd+R" />
           {settings.klondikeDebugTools ? (
             <ActionButton label="Save" onPress={saveCurrentState} />
           ) : null}
@@ -630,9 +657,20 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
             }
             label={offloadActive ? 'Stop' : 'Offload'}
             onPress={toggleOffload}
+            shortcut="Cmd+A"
           />
-          <ActionButton label="Undo" onPress={undo} disabled={history.past.length === 0} />
-          <ActionButton label="Redo" onPress={redo} disabled={history.future.length === 0} />
+          <ActionButton
+            label="Undo"
+            onPress={undo}
+            disabled={history.past.length === 0}
+            shortcut="Cmd+Z"
+          />
+          <ActionButton
+            label="Redo"
+            onPress={redo}
+            disabled={history.future.length === 0}
+            shortcut="Cmd+Shift+Z"
+          />
           <ActionButton label="Hint" onPress={showHint} />
           <ActionButton label="Rules" onPress={() => router.push('/rules?game=klondike')} />
           <Pressable
@@ -943,9 +981,12 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 }
 
 function createHistoryState(state: KlondikeState): HistoryState {
+  const initial = cloneGameState(state);
+
   return {
+    initial,
     past: [],
-    present: state,
+    present: cloneGameState(initial),
     future: [],
   };
 }
@@ -1114,16 +1155,18 @@ function ActionButton({
   label,
   onPress,
   disabled,
+  shortcut,
 }: {
   label: string;
   onPress(): void;
   disabled?: boolean;
+  shortcut?: string;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
+    <ShortcutPressable
       disabled={disabled}
       onPress={onPress}
+      shortcut={shortcut}
       style={({ pressed }) => [
         styles.actionButton,
         disabled && styles.actionButtonDisabled,
@@ -1131,7 +1174,7 @@ function ActionButton({
       ]}
     >
       <Text style={styles.actionButtonText}>{label}</Text>
-    </Pressable>
+    </ShortcutPressable>
   );
 }
 

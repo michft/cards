@@ -375,7 +375,7 @@ function renderFace(card: StackCard, width: number, height: number, selected?: b
     <View
       style={[
         styles.cardFace,
-        selected && styles.cardSelected,
+        selected && styles.cardFaceSelected,
         {
           width,
           height,
@@ -485,6 +485,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     boxShadow: '0px 3px 10px rgba(0, 0, 0, 0.14)',
   },
+  cardFaceSelected: {
+    backgroundColor: '#f4e8c9',
+    boxShadow: '0px 8px 18px rgba(18, 33, 25, 0.24)',
+  },
   cardBack: {
     backgroundColor: palette.tableShadow,
     borderRadius: radius.md,
@@ -509,6 +513,8 @@ const styles = StyleSheet.create({
   cardSelected: {
     borderColor: palette.accent,
     borderWidth: 2,
+    backgroundColor: '#6d6d6d',
+    boxShadow: '0px 8px 18px rgba(18, 33, 25, 0.28)',
   },
   cornerRank: {
     fontSize: 18,
