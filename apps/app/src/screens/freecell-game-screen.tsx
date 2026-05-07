@@ -16,6 +16,8 @@ import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
 import { cloneGameState } from './shared/clone-game-state';
 import { CardStack } from './shared/card-stack';
+import { ShortcutPressable } from './shared/shortcut-pressable';
+import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
 type HistoryState = {
   initial: FreeCellState;
@@ -206,6 +208,14 @@ export function FreeCellGameScreen({ mode }: Props) {
     clearInteraction();
   }
 
+  useWebGameShortcuts({
+    onUndo: undo,
+    onRedo: redo,
+    onNew: startNewGame,
+    onRestart: restartGame,
+    onOffload: toggleOffload,
+  });
+
   function saveCurrentState() {
     const envelope: PersistedGameEnvelope<FreeCellState> = {
       gameId: 'freecell',
@@ -358,8 +368,8 @@ export function FreeCellGameScreen({ mode }: Props) {
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.headerActions}>
-            <ActionButton label="New" onPress={startNewGame} />
-            <ActionButton label="Restart" onPress={restartGame} />
+            <ActionButton label="New" onPress={startNewGame} shortcut="Cmd+N" />
+            <ActionButton label="Restart" onPress={restartGame} shortcut="Cmd+R" />
             {settings.freeCellDebugTools ? (
               <ActionButton label="Save" onPress={saveCurrentState} />
             ) : null}
@@ -374,9 +384,20 @@ export function FreeCellGameScreen({ mode }: Props) {
               label={offloadActive ? 'Stop' : 'Offload'}
               onPress={toggleOffload}
               disabled={!offloadActive && !getNextFreeCellFoundationMove(history.present)}
+              shortcut="Cmd+A"
             />
-            <ActionButton label="Undo" onPress={undo} disabled={history.past.length === 0} />
-            <ActionButton label="Redo" onPress={redo} disabled={history.future.length === 0} />
+            <ActionButton
+              label="Undo"
+              onPress={undo}
+              disabled={history.past.length === 0}
+              shortcut="Cmd+Z"
+            />
+            <ActionButton
+              label="Redo"
+              onPress={redo}
+              disabled={history.future.length === 0}
+              shortcut="Cmd+Shift+Z"
+            />
             <ActionButton label="Hint" onPress={showHint} />
             <ActionButton label="Rules" onPress={() => router.push('/rules?game=freecell')} />
             <Pressable
@@ -750,16 +771,18 @@ function ActionButton({
   disabled,
   label,
   onPress,
+  shortcut,
 }: {
   disabled?: boolean;
   label: string;
   onPress(): void;
+  shortcut?: string;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
+    <ShortcutPressable
       disabled={disabled}
       onPress={onPress}
+      shortcut={shortcut}
       style={({ pressed }) => [
         styles.actionButton,
         disabled && styles.actionButtonDisabled,
@@ -767,7 +790,7 @@ function ActionButton({
       ]}
     >
       <Text style={styles.actionButtonText}>{label}</Text>
-    </Pressable>
+    </ShortcutPressable>
   );
 }
 
