@@ -10,9 +10,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
+import { cloneGameState } from './shared/clone-game-state';
 import { CardStack } from './shared/card-stack';
 
 type HistoryState = {
+  initial: ClockState;
   past: ClockState[];
   present: ClockState;
   future: ClockState[];
@@ -127,6 +129,7 @@ export function ClockGameScreen({ mode }: Props) {
 
   function commit(next: ClockState) {
     setHistory((current) => ({
+      initial: current.initial,
       past: [...current.past.slice(-49), current.present],
       present: next,
       future: [],
@@ -136,6 +139,11 @@ export function ClockGameScreen({ mode }: Props) {
 
   function startNewGame() {
     setHistory(createHistoryState(createClockGame(Math.random)));
+    clearInteraction();
+  }
+
+  function restartGame() {
+    setHistory((current) => createHistoryState(current.initial));
     clearInteraction();
   }
 
@@ -199,6 +207,7 @@ export function ClockGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: current.past.slice(0, -1),
         present: previous,
         future: [current.present, ...current.future].slice(0, 50),
@@ -216,6 +225,7 @@ export function ClockGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: [...current.past, current.present].slice(-50),
         present: next,
         future: current.future.slice(1),
@@ -313,6 +323,7 @@ export function ClockGameScreen({ mode }: Props) {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.headerActions}>
             <ActionButton label="New" onPress={startNewGame} />
+            <ActionButton label="Restart" onPress={restartGame} />
             {settings.clockDebugTools ? (
               <ActionButton label="Save" onPress={saveCurrentState} />
             ) : null}
@@ -583,9 +594,12 @@ function deriveLegacyStockPiles(legacyStock: PlayingCard[]): PlayingCard[][] {
 }
 
 function createHistoryState(state: ClockState): HistoryState {
+  const initial = cloneGameState(state);
+
   return {
+    initial,
     past: [],
-    present: state,
+    present: cloneGameState(initial),
     future: [],
   };
 }

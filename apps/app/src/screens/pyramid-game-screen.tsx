@@ -17,9 +17,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
+import { cloneGameState } from './shared/clone-game-state';
 import { CardStack } from './shared/card-stack';
 
 type HistoryState = {
+  initial: PyramidState;
   past: PyramidState[];
   present: PyramidState;
   future: PyramidState[];
@@ -104,6 +106,7 @@ export function PyramidGameScreen({ mode }: Props) {
 
   function commit(next: PyramidState) {
     setHistory((current) => ({
+      initial: current.initial,
       past: [...current.past.slice(-49), current.present],
       present: next,
       future: [],
@@ -116,6 +119,11 @@ export function PyramidGameScreen({ mode }: Props) {
     clearInteraction();
   }
 
+  function restartGame() {
+    setHistory((current) => createHistoryState(current.initial));
+    clearInteraction();
+  }
+
   function undo() {
     setHistory((current) => {
       const previous = current.past[current.past.length - 1];
@@ -125,6 +133,7 @@ export function PyramidGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: current.past.slice(0, -1),
         present: previous,
         future: [current.present, ...current.future].slice(0, 50),
@@ -142,6 +151,7 @@ export function PyramidGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: [...current.past, current.present].slice(-50),
         present: next,
         future: current.future.slice(1),
@@ -302,6 +312,7 @@ export function PyramidGameScreen({ mode }: Props) {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.headerActions}>
             <ActionButton label="New" onPress={startNewGame} />
+            <ActionButton label="Restart" onPress={restartGame} />
             <ActionButton
               label={stockCount > 0 ? 'Draw' : 'Recycle'}
               onPress={handleDrawOrRecycle}
@@ -451,9 +462,12 @@ export function PyramidGameScreen({ mode }: Props) {
 }
 
 function createHistoryState(state: PyramidState): HistoryState {
+  const initial = cloneGameState(state);
+
   return {
+    initial,
     past: [],
-    present: state,
+    present: cloneGameState(initial),
     future: [],
   };
 }

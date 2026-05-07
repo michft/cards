@@ -9,9 +9,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { CardStack } from './shared/card-stack';
+import { cloneGameState } from './shared/clone-game-state';
 import { palette, radius, spacing, typography } from '../theme';
 
 type SpiderHistoryState = {
+  initial: SpiderState;
   past: SpiderState[];
   present: SpiderState;
   future: SpiderState[];
@@ -98,6 +100,7 @@ export function SpiderGameScreen({ mode }: Props) {
 
   function commit(next: SpiderState) {
     setHistory((current) => ({
+      initial: current.initial,
       past: [...current.past.slice(-49), current.present],
       present: next,
       future: [],
@@ -118,6 +121,14 @@ export function SpiderGameScreen({ mode }: Props) {
     setSnapshotPickerOpen(false);
   }
 
+  function restartGame() {
+    setHistory((current) => createSpiderHistoryState(current.initial));
+    setSelectedSource(null);
+    setGameMenuOpen(false);
+    setExpandedTableauPile(null);
+    setSnapshotPickerOpen(false);
+  }
+
   function undo() {
     setHistory((current) => {
       const previous = current.past[current.past.length - 1];
@@ -127,6 +138,7 @@ export function SpiderGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: current.past.slice(0, -1),
         present: previous,
         future: [current.present, ...current.future].slice(0, 50),
@@ -147,6 +159,7 @@ export function SpiderGameScreen({ mode }: Props) {
       }
 
       return {
+        initial: current.initial,
         past: [...current.past, current.present].slice(-50),
         present: next,
         future: current.future.slice(1),
@@ -327,6 +340,13 @@ export function SpiderGameScreen({ mode }: Props) {
             >
               <Text style={styles.switchButtonText}>New</Text>
             </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={restartGame}
+              style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.switchButtonText}>Restart</Text>
+            </Pressable>
             {settings.spiderDebugTools ? (
               <Pressable
                 accessibilityRole="button"
@@ -491,9 +511,12 @@ export function SpiderGameScreen({ mode }: Props) {
 }
 
 function createSpiderHistoryState(state: SpiderState): SpiderHistoryState {
+  const initial = cloneGameState(state);
+
   return {
+    initial,
     past: [],
-    present: state,
+    present: cloneGameState(initial),
     future: [],
   };
 }
