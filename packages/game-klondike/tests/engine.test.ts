@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createDeck, SUITS } from '@mumscards/engine-core';
 
 import {
   applyKlondikeMove,
@@ -6,6 +7,8 @@ import {
   createKlondikeGame,
   drawFromStock,
   getHint,
+  getHints,
+  getLegalMoves,
   recycleWaste,
 } from '../src/engine';
 import type { KlondikeState, KlondikeTableauCard } from '../src/types';
@@ -26,6 +29,42 @@ function card(
 }
 
 describe('Klondike engine', () => {
+  it('hints draw instead of looping whole piles through empty columns', () => {
+    const deck = createDeck('hint-loop');
+    const state: KlondikeState = {
+      gameId: 'klondike',
+      drawCount: 3,
+      completed: false,
+      stock: deck.filter((current) => current.suit === 'hearts' && [11, 12].includes(current.rank)),
+      waste: [],
+      foundations: SUITS.map((suit) => deck.filter(
+        (current) => current.suit === suit && (suit !== 'hearts' || current.rank <= 10),
+      )),
+      tableau: [
+        [card('hint-loop-hearts-13', 'hearts', 13)],
+        [], [], [], [], [], [],
+      ],
+    };
+
+    expect(getHint(state)?.move).toEqual({ kind: 'draw' });
+    for (const mode of ['balanced', 'mobility', 'foundation-first'] as const) {
+      expect(getHints(state, mode).filter((hint) =>
+        hint.move.kind === 'move' && hint.move.source.zone === 'tableau',
+      )).toHaveLength(0);
+    }
+    expect(getLegalMoves(state)).toContainEqual({
+      kind: 'move',
+      source: { zone: 'tableau', pileIndex: 0, cardIndex: 0 },
+      destination: { zone: 'tableau', pileIndex: 1 },
+    });
+    const moved = applyKlondikeMove(state, {
+      kind: 'move',
+      source: { zone: 'tableau', pileIndex: 0, cardIndex: 0 },
+      destination: { zone: 'tableau', pileIndex: 1 },
+    });
+    expect(moved.tableau[1][0]?.rank).toBe(13);
+  });
+
   it('deals a valid starting layout', () => {
     const state = createKlondikeGame(() => 0.5);
 
@@ -43,6 +82,27 @@ describe('Klondike engine', () => {
 
     expect(state.drawCount).toBe(1);
     expect(next.waste).toHaveLength(1);
+  });
+
+  it('retains the dealt empty-tableau rule when restored after settings change', () => {
+    const dealt = createKlondikeGame(() => 0.5, { emptyTableauPolicy: 'king-only' });
+    const state: KlondikeState = {
+      ...dealt,
+      stock: [],
+      tableau: [[card('six', 'spades', 6)], [], [], [], [], [], []],
+    };
+    const move = {
+      kind: 'move',
+      source: { zone: 'tableau', pileIndex: 0, cardIndex: 0 },
+      destination: { zone: 'tableau', pileIndex: 1 },
+    } as const;
+
+    expect(dealt.emptyTableauPolicy).toBe('king-only');
+    expect(applyKlondikeMove(state, move).tableau[1]).toHaveLength(0);
+    expect(getLegalMoves(state)).not.toContainEqual(move);
+    const explicitlyOverridden = applyKlondikeMove(state, move, { emptyTableauPolicy: 'any' });
+    expect(explicitlyOverridden.tableau[1]).toHaveLength(1);
+    expect(explicitlyOverridden.emptyTableauPolicy).toBe('king-only');
   });
 
   it('moves an ace to foundation', () => {

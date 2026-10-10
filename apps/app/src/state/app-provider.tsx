@@ -19,6 +19,71 @@ const SAVES_KEY = 'mumscards.saves';
 const SNAPSHOTS_KEY = 'mumscards.snapshots';
 const SNAPSHOT_LIMIT = 20;
 
+const settingValues: { [Key in keyof AppSettings]: readonly AppSettings[Key][] } = {
+  drawCount: [1, 3],
+  hintMode: ['balanced', 'mobility', 'foundation-first'],
+  emptyTableauPolicy: ['any', 'king-only'],
+  spiderSuitMode: ['spades-only', 'hearts-only', 'red-black', 'all-suits'],
+  freeCellTableauBuildPolicy: ['any', 'alternate-red-black', 'suit-matching'],
+  klondikeDebugTools: [true, false],
+  spiderDebugTools: [true, false],
+  freeCellDebugTools: [true, false],
+  pyramidDebugTools: [true, false],
+  clockDebugTools: [true, false],
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeSettings(value: unknown): AppSettings {
+  const settings = { ...defaultSettings };
+  if (!isRecord(value)) return settings;
+
+  for (const key of Object.keys(settingValues) as Array<keyof AppSettings>) {
+    const candidate = key === 'freeCellTableauBuildPolicy' && value[key] === 'red-black'
+      ? 'alternate-red-black'
+      : value[key];
+    if ((settingValues[key] as readonly unknown[]).includes(candidate)) {
+      Object.assign(settings, { [key]: candidate });
+    }
+  }
+  return settings;
+}
+
+function isGameEnvelope(value: unknown, variant: GameVariant): value is Record<string, unknown> {
+  return isRecord(value) && value.gameId === variant
+    && typeof value.updatedAt === 'string' && isRecord(value.state);
+}
+
+function normalizeSaves(value: unknown): SavedGames {
+  const saves = { ...defaultSavedGames };
+  if (!isRecord(value)) return saves;
+
+  for (const variant of Object.keys(saves) as GameVariant[]) {
+    if (isGameEnvelope(value[variant], variant)) {
+      Object.assign(saves, { [variant]: value[variant] });
+    }
+  }
+  return saves;
+}
+
+function normalizeSnapshots(value: unknown): SavedSnapshots {
+  const snapshots = { ...defaultSavedSnapshots };
+  if (!isRecord(value)) return snapshots;
+
+  for (const variant of Object.keys(snapshots) as GameVariant[]) {
+    const entries = value[variant];
+    if (Array.isArray(entries)) {
+      Object.assign(snapshots, {
+        [variant]: entries.filter((entry: unknown) => isGameEnvelope(entry, variant)
+          && typeof entry.id === 'string' && typeof entry.label === 'string'),
+      });
+    }
+  }
+  return snapshots;
+}
+
 type AppSnapshot = {
   hydrated: boolean;
   settings: AppSettings;
@@ -68,30 +133,16 @@ async function ensureHydrated() {
   if (!hydratePromise) {
     hydratePromise = (async () => {
       const [loadedSettings, loadedSaves, loadedSnapshots] = await Promise.all([
-        loadJson(storageAdapter, SETTINGS_KEY, defaultSettings),
-        loadJson(storageAdapter, SAVES_KEY, defaultSavedGames),
-        loadJson(storageAdapter, SNAPSHOTS_KEY, defaultSavedSnapshots),
+        loadJson<unknown>(storageAdapter, SETTINGS_KEY, defaultSettings),
+        loadJson<unknown>(storageAdapter, SAVES_KEY, defaultSavedGames),
+        loadJson<unknown>(storageAdapter, SNAPSHOTS_KEY, defaultSavedSnapshots),
       ]);
 
       setSnapshot({
         hydrated: true,
-        settings: {
-          ...defaultSettings,
-          ...loadedSettings,
-          freeCellTableauBuildPolicy:
-            loadedSettings.freeCellTableauBuildPolicy === 'red-black'
-              ? 'alternate-red-black'
-              : (loadedSettings.freeCellTableauBuildPolicy ??
-                defaultSettings.freeCellTableauBuildPolicy),
-        },
-        saves: {
-          ...defaultSavedGames,
-          ...loadedSaves,
-        },
-        snapshots: {
-          ...defaultSavedSnapshots,
-          ...loadedSnapshots,
-        },
+        settings: normalizeSettings(loadedSettings),
+        saves: normalizeSaves(loadedSaves),
+        snapshots: normalizeSnapshots(loadedSnapshots),
       });
     })().finally(() => {
       hydratePromise = null;
@@ -113,6 +164,7 @@ function getSnapshot() {
 }
 
 async function updateSettings(patch: Partial<AppSettings>) {
+  await ensureHydrated();
   const nextSettings = {
     ...snapshot.settings,
     ...patch,
@@ -129,6 +181,7 @@ async function saveGame<Variant extends GameVariant>(
   variant: Variant,
   envelope: PersistedGameEnvelope<GameStateMap[Variant]>,
 ) {
+  await ensureHydrated();
   const nextSaves = {
     ...snapshot.saves,
     [variant]: envelope,
@@ -155,6 +208,7 @@ async function saveSnapshot<Variant extends GameVariant>(
   envelope: PersistedGameEnvelope<GameStateMap[Variant]>,
   label?: string,
 ) {
+  await ensureHydrated();
   const nextSnapshots = {
     ...snapshot.snapshots,
     [variant]: [
@@ -175,6 +229,7 @@ async function saveSnapshot<Variant extends GameVariant>(
 }
 
 async function deleteSnapshot(variant: GameVariant, snapshotId: string) {
+  await ensureHydrated();
   const nextSnapshots = {
     ...snapshot.snapshots,
     [variant]: snapshot.snapshots[variant].filter((entry) => entry.id !== snapshotId),
@@ -188,6 +243,7 @@ async function deleteSnapshot(variant: GameVariant, snapshotId: string) {
 }
 
 async function clearGame(variant: GameVariant) {
+  await ensureHydrated();
   const nextSaves = {
     ...snapshot.saves,
     [variant]: null,

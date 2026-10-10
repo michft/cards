@@ -23,10 +23,13 @@ type KlondikeRuleOptions = {
   emptyTableauPolicy?: KlondikeEmptyTableauPolicy;
 };
 
-function resolveOptions(options?: KlondikeRuleOptions): Required<KlondikeRuleOptions> {
+function resolveOptions(
+  options?: KlondikeRuleOptions,
+  state?: KlondikeState,
+): Required<KlondikeRuleOptions> {
   return {
-    drawCount: options?.drawCount ?? 3,
-    emptyTableauPolicy: options?.emptyTableauPolicy ?? 'any',
+    drawCount: options?.drawCount ?? state?.drawCount ?? 3,
+    emptyTableauPolicy: options?.emptyTableauPolicy ?? state?.emptyTableauPolicy ?? 'any',
   };
 }
 
@@ -65,6 +68,7 @@ export function createKlondikeGame(random = Math.random, options?: KlondikeRuleO
   return {
     gameId: 'klondike',
     drawCount: resolved.drawCount,
+    emptyTableauPolicy: resolved.emptyTableauPolicy,
     completed: false,
     stock: deck,
     waste: [],
@@ -131,7 +135,7 @@ export function moveCards(
   destination: KlondikeDestination,
   options?: KlondikeRuleOptions,
 ): KlondikeState | null {
-  const resolved = resolveOptions(options);
+  const resolved = resolveOptions(options, state);
   const payload = getMovePayload(state, source);
 
   if (!payload) {
@@ -185,7 +189,7 @@ export function getLegalMoves(
   state: KlondikeState,
   options?: KlondikeRuleOptions,
 ): KlondikeMove[] {
-  const resolved = resolveOptions(options);
+  const resolved = resolveOptions(options, state);
   const moves: KlondikeMove[] = [];
 
   if (state.stock.length > 0) {
@@ -253,6 +257,13 @@ export function getHints(
   options?: KlondikeRuleOptions,
 ): KlondikeHint[] {
   return getLegalMoves(state, options)
+    .filter((move) => !(
+      move.kind === 'move'
+      && move.source.zone === 'tableau'
+      && move.source.cardIndex === 0
+      && move.destination.zone === 'tableau'
+      && state.tableau[move.destination.pileIndex].length === 0
+    ))
     .map((move) => scoreMove(state, move, mode))
     .sort((left, right) => right.score - left.score)
     .map((candidate) => ({
@@ -262,7 +273,7 @@ export function getHints(
 }
 
 export function canAutoComplete(state: KlondikeState, options?: KlondikeRuleOptions): boolean {
-  const resolved = resolveOptions(options);
+  const resolved = resolveOptions(options, state);
   if (state.stock.length > 0 || !allTableauCardsFaceUp(state)) {
     return false;
   }
@@ -280,7 +291,7 @@ export function canAutoComplete(state: KlondikeState, options?: KlondikeRuleOpti
 }
 
 export function runAutoComplete(state: KlondikeState, options?: KlondikeRuleOptions): KlondikeState {
-  const resolved = resolveOptions(options);
+  const resolved = resolveOptions(options, state);
   let next = cloneKlondikeState(state);
   let advanced = true;
 
@@ -307,7 +318,7 @@ export function getPreferredDestination(
   source: KlondikeSource,
   options?: KlondikeRuleOptions,
 ): KlondikeDestination | null {
-  const resolved = resolveOptions(options);
+  const resolved = resolveOptions(options, state);
   const foundation = getFoundationTargets(state, source)[0];
 
   if (foundation) {
