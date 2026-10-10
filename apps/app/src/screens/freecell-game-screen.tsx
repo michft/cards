@@ -15,17 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
-import { cloneGameState } from './shared/clone-game-state';
+import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack } from './shared/card-stack';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
-type HistoryState = {
-  initial: FreeCellState;
-  past: FreeCellState[];
-  present: FreeCellState;
-  future: FreeCellState[];
-};
+type HistoryState = GameHistory<FreeCellState>;
 
 type Props = {
   mode: 'new' | 'resume';
@@ -46,9 +41,8 @@ export function FreeCellGameScreen({ mode }: Props) {
   } = useAppModel();
   const savedGame = saves.freecell;
   const [history, setHistory] = useState<HistoryState>(() =>
-    createHistoryState(
-      mode === 'resume' && savedGame ? savedGame.state : createFreeCellGame(Math.random, { tableauBuildPolicy: settings.freeCellTableauBuildPolicy }),
-    ),
+    mode === 'resume' && savedGame ? restoreGameHistory(savedGame)
+      : createHistoryState(createFreeCellGame(Math.random, { tableauBuildPolicy: settings.freeCellTableauBuildPolicy })),
   );
   const tableauBuildPolicy = history.present.tableauBuildPolicy ?? 'alternate-red-black';
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
@@ -75,14 +69,10 @@ export function FreeCellGameScreen({ mode }: Props) {
       return;
     }
 
-    const envelope: PersistedGameEnvelope<FreeCellState> = {
-      gameId: 'freecell',
-      updatedAt: new Date().toISOString(),
-      state: history.present,
-    };
+    const envelope = persistGameHistory('freecell', history);
 
     void saveGame('freecell', envelope);
-  }, [clearGame, history.present, hydrated, saveGame]);
+  }, [clearGame, history, hydrated, saveGame]);
 
   useEffect(() => {
     if (!offloadActive) {
@@ -97,6 +87,7 @@ export function FreeCellGameScreen({ mode }: Props) {
     }
 
     const timer = setTimeout(() => {
+      setSelectedSource(null);
       setHistory((current) => {
         const nextMove = getNextFreeCellFoundationMove(current.present);
 
@@ -202,16 +193,12 @@ export function FreeCellGameScreen({ mode }: Props) {
   });
 
   function saveCurrentState() {
-    const envelope: PersistedGameEnvelope<FreeCellState> = {
-      gameId: 'freecell',
-      updatedAt: new Date().toISOString(),
-      state: history.present,
-    };
+    const envelope = persistGameHistory('freecell', history);
     void saveSnapshot('freecell', envelope);
   }
 
   function loadSnapshot(snapshot: PersistedGameEnvelope<FreeCellState>) {
-    setHistory(createHistoryState(snapshot.state));
+    setHistory(restoreGameHistory(snapshot));
     clearInteraction();
   }
 
@@ -221,12 +208,16 @@ export function FreeCellGameScreen({ mode }: Props) {
       return;
     }
 
+    if (!canMoveFreeCellSource(history.present, source, tableauBuildPolicy)) {
+      return;
+    }
+
     setSelectedSource(source);
   }
 
-  function handleDestinationPress(destination: FreeCellDestination) {
+  function handleDestinationPress(destination: FreeCellDestination): boolean {
     if (!selectedSource) {
-      return;
+      return false;
     }
 
     if (
@@ -238,7 +229,7 @@ export function FreeCellGameScreen({ mode }: Props) {
         selectedSource.cellIndex === destination.cellIndex)
     ) {
       setSelectedSource(null);
-      return;
+      return false;
     }
 
     const next = applyFreeCellMove(history.present, selectedSource, destination, {
@@ -246,10 +237,11 @@ export function FreeCellGameScreen({ mode }: Props) {
     });
 
     if (JSON.stringify(next) === JSON.stringify(history.present)) {
-      return;
+      return false;
     }
 
     commit(next);
+    return true;
   }
 
   function toggleOffload() {
@@ -262,6 +254,7 @@ export function FreeCellGameScreen({ mode }: Props) {
       return;
     }
 
+    setSelectedSource(null);
     setOffloadActive(true);
   }
 
@@ -298,7 +291,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/clock?mode=new');
+                  router.replace('/game/clock?mode=resume');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
@@ -311,7 +304,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/klondike?mode=new');
+                  router.replace('/game/klondike?mode=resume');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
@@ -321,7 +314,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/pyramid?mode=new');
+                  router.replace('/game/pyramid?mode=resume');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
@@ -331,7 +324,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/spider?mode=new');
+                  router.replace('/game/spider?mode=resume');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
@@ -341,7 +334,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.push('/');
+                  router.replace('/');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
@@ -446,11 +439,12 @@ export function FreeCellGameScreen({ mode }: Props) {
                     cards={card ? [{ ...card, faceUp: true }] : []}
                     key={`cell-${cellIndex}`}
                     onCardPress={
-                      selectedSource
-                        ? () => handleDestinationPress({ zone: 'cell', cellIndex })
-                        : card
-                          ? () => handleSourcePress({ zone: 'cell', cellIndex })
-                          : undefined
+                      card || selectedSource
+                        ? () => {
+                            if (selectedSource && handleDestinationPress({ zone: 'cell', cellIndex })) return;
+                            if (card) handleSourcePress({ zone: 'cell', cellIndex });
+                          }
+                        : undefined
                     }
                     placeholderLabel="Free"
                     selected={
@@ -486,10 +480,11 @@ export function FreeCellGameScreen({ mode }: Props) {
                         : undefined
                     }
                     onFaceUpCardPress={(cardIndex) => {
-                      if (selectedSource) {
-                        handleDestinationPress({ zone: 'tableau', pileIndex });
+                      if (selectedSource && selectedSource.zone === 'tableau' && selectedSource.pileIndex === pileIndex) {
+                        handleSourcePress({ zone: 'tableau', pileIndex, cardIndex });
                         return;
                       }
+                      if (selectedSource && handleDestinationPress({ zone: 'tableau', pileIndex })) return;
 
                       handleSourcePress({ zone: 'tableau', pileIndex, cardIndex });
                     }}
@@ -512,17 +507,6 @@ export function FreeCellGameScreen({ mode }: Props) {
       </View>
     </SafeAreaView>
   );
-}
-
-function createHistoryState(state: FreeCellState): HistoryState {
-  const initial = cloneGameState(state);
-
-  return {
-    initial,
-    past: [],
-    present: cloneGameState(initial),
-    future: [],
-  };
 }
 
 function getNextFreeCellFoundationMove(
@@ -566,6 +550,23 @@ function getNextFreeCellFoundationMove(
   return null;
 }
 
+function canMoveFreeCellSource(
+  state: FreeCellState,
+  source: FreeCellSource,
+  policy: 'any' | 'red-black' | 'alternate-red-black' | 'suit-matching',
+): boolean {
+  const destinations: FreeCellDestination[] = [
+    ...state.tableau.map((_, pileIndex) => ({ zone: 'tableau' as const, pileIndex })),
+    ...state.freeCells.map((_, cellIndex) => ({ zone: 'cell' as const, cellIndex })),
+    ...state.foundations.map((_, pileIndex) => ({ zone: 'foundation' as const, pileIndex })),
+  ];
+  return destinations.some((destination) => {
+    if (source.zone === 'tableau' && destination.zone === 'tableau' && source.pileIndex === destination.pileIndex) return false;
+    if (source.zone === 'cell' && destination.zone === 'cell' && source.cellIndex === destination.cellIndex) return false;
+    return JSON.stringify(applyFreeCellMove(state, source, destination, { tableauBuildPolicy: policy })) !== JSON.stringify(state);
+  });
+}
+
 function getFreeCellHints(
   state: FreeCellState,
   policy: 'any' | 'red-black' | 'alternate-red-black' | 'suit-matching',
@@ -606,25 +607,10 @@ function getHintPriority(hint: {
   source: FreeCellSource;
   destination: FreeCellDestination;
 }): number {
-  if (hint.source.zone === 'tableau' && hint.destination.zone === 'tableau') {
-    return 0;
-  }
-
-  if (hint.source.zone === 'tableau' && hint.destination.zone === 'foundation') {
-    return 1;
-  }
-
-  if (hint.source.zone === 'tableau' && hint.destination.zone === 'cell') {
-    return 2;
-  }
-
-  if (hint.source.zone === 'cell' && hint.destination.zone === 'tableau') {
-    return 3;
-  }
-
-  if (hint.source.zone === 'cell' && hint.destination.zone === 'foundation') {
-    return 4;
-  }
+  if (hint.destination.zone === 'foundation') return 0;
+  if (hint.source.zone === 'cell' && hint.destination.zone === 'tableau') return 1;
+  if (hint.source.zone === 'tableau' && hint.destination.zone === 'tableau') return 2;
+  if (hint.destination.zone === 'cell') return 3;
 
   return 5;
 }
@@ -666,6 +652,11 @@ function maybeAddHint(
       source.pileIndex === destination.pileIndex) ||
     (source.zone === 'cell' && destination.zone === 'cell' && source.cellIndex === destination.cellIndex)
   ) {
+    return;
+  }
+
+  if (source.zone === 'tableau' && source.cardIndex === 0 &&
+      destination.zone === 'tableau' && state.tableau[destination.pileIndex].length === 0) {
     return;
   }
 

@@ -31,17 +31,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
-import { cloneGameState } from './shared/clone-game-state';
+import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack, type DragPayload as DragGesturePayload } from './shared/card-stack';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { isEditableTarget, useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
-type HistoryState = {
-  initial: KlondikeState;
-  past: KlondikeState[];
-  present: KlondikeState;
-  future: KlondikeState[];
-};
+type HistoryState = GameHistory<KlondikeState>;
 
 type DragCard = KlondikeTableauCard;
 type DragState = {
@@ -81,7 +76,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     });
   }
   const [history, setHistory] = useState<HistoryState>(() =>
-    createHistoryState(mode === 'resume' && savedGame ? savedGame.state : createNewGame()),
+    mode === 'resume' && savedGame ? restoreGameHistory(savedGame) : createHistoryState(createNewGame()),
   );
   const emptyTableauPolicy = history.present.emptyTableauPolicy ?? 'any';
   const [selectedSource, setSelectedSource] = useState<KlondikeSource | null>(null);
@@ -102,7 +97,6 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     redo: () => {},
     showHint: () => {},
     draw: () => {},
-    startNewGame: () => {},
   });
 
   useEffect(() => {
@@ -115,14 +109,10 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
       return;
     }
 
-    const envelope: PersistedGameEnvelope<KlondikeState> = {
-      gameId: 'klondike',
-      updatedAt: new Date().toISOString(),
-      state: history.present,
-    };
+    const envelope = persistGameHistory('klondike', history);
 
     void saveGame('klondike', envelope);
-  }, [clearGame, history.present, hydrated, saveGame]);
+  }, [clearGame, history, hydrated, saveGame]);
 
   useFocusEffect(useCallback(() => {
     if (Platform.OS !== 'web') {
@@ -158,10 +148,6 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
         keyActionRef.current.draw();
       }
 
-      if (event.key.toLowerCase() === 'n') {
-        event.preventDefault();
-        keyActionRef.current.startNewGame();
-      }
     };
 
     window.addEventListener('keydown', handler);
@@ -257,6 +243,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     }
 
     const timer = setTimeout(() => {
+      clearInteractionState();
       setHistory((current) => {
         const nextMove = getNextFoundationMove(current.present, emptyTableauPolicy);
 
@@ -314,17 +301,13 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   }
 
   function saveCurrentState() {
-    const envelope: PersistedGameEnvelope<KlondikeState> = {
-      gameId: 'klondike',
-      updatedAt: new Date().toISOString(),
-      state: history.present,
-    };
+    const envelope = persistGameHistory('klondike', history);
     void saveSnapshot('klondike', envelope);
   }
 
   function loadSnapshot(snapshot: PersistedGameEnvelope<KlondikeState>) {
     setOffloadActive(false);
-    setHistory(createHistoryState(snapshot.state));
+    setHistory(restoreGameHistory(snapshot));
     clearInteractionState();
   }
 
@@ -375,6 +358,10 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   });
 
   function draw() {
+    if (history.present.stock.length === 0 && history.present.waste.length === 0) {
+      return;
+    }
+
     setOffloadActive(false);
     const next =
       history.present.stock.length > 0
@@ -565,7 +552,6 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     redo,
     showHint,
     draw,
-    startNewGame,
   };
 
   const highlightedDestinations = useMemo(() => {
@@ -860,7 +846,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/clock?mode=new');
+                  router.replace('/game/clock?mode=resume');
                 }}
                 style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
               >
@@ -870,7 +856,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/freecell?mode=new');
+                  router.replace('/game/freecell?mode=resume');
                 }}
                 style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
               >
@@ -883,7 +869,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/pyramid?mode=new');
+                  router.replace('/game/pyramid?mode=resume');
                 }}
                 style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
               >
@@ -893,7 +879,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/spider?mode=new');
+                  router.replace('/game/spider?mode=resume');
                 }}
                 style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
               >
@@ -903,7 +889,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.push('/');
+                  router.replace('/');
                 }}
                 style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
               >
@@ -941,17 +927,6 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
       </View>
     </SafeAreaView>
   );
-}
-
-function createHistoryState(state: KlondikeState): HistoryState {
-  const initial = cloneGameState(state);
-
-  return {
-    initial,
-    past: [],
-    present: cloneGameState(initial),
-    future: [],
-  };
 }
 
 function getNextFoundationMove(

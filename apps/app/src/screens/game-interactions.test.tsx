@@ -6,7 +6,7 @@ import { createKlondikeGame, type KlondikeState } from '@mumscards/game-klondike
 import { createSpiderGame } from '@mumscards/game-spider';
 import { createFreeCellGame, type FreeCellState } from '@mumscards/game-freecell';
 import type { useAppModel } from '../state/app-provider';
-import { defaultSavedGames, defaultSavedSnapshots, defaultSettings } from '../state/types';
+import { defaultSavedGames, defaultSavedSnapshots, defaultSettings, type GameVariant } from '../state/types';
 import { KlondikeGameScreen } from './klondike-game-screen';
 import { SpiderGameScreen } from './spider-game-screen';
 import { FreeCellGameScreen } from './freecell-game-screen';
@@ -17,10 +17,11 @@ let model: AppModel;
 let routeParams = { gameId: 'klondike', mode: 'resume' };
 const saveGame = vi.fn<AppModel['saveGame']>();
 const clearGame = vi.fn<AppModel['clearGame']>();
+const replace = vi.fn();
 
 vi.mock('../state/app-provider', () => ({ useAppModel: () => model }));
 vi.mock('expo-router', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace }),
   useLocalSearchParams: () => routeParams,
   useFocusEffect: (callback: () => void | (() => void)) => useEffect(callback, [callback]),
 }));
@@ -33,7 +34,7 @@ vi.mock('./shared/card-stack', () => ({
     onFaceUpCardPress?(index: number): void;
   }) => (
     <div>
-      {cards.length === 0 ? <span>{placeholderLabel}</span> : cards.map((card, index) => (
+      {cards.length === 0 ? <div role="button" tabIndex={0} onClick={() => onCardPress?.()}>{placeholderLabel}</div> : cards.map((card, index) => (
         <div role="button" tabIndex={0} key={card.id} aria-label={card.id} onClick={(event) => {
           event.stopPropagation();
           if (onFaceUpCardPress) onFaceUpCardPress(index);
@@ -65,14 +66,46 @@ function emptyKlondike(): KlondikeState {
     foundations: [[], [], [], []], tableau: Array.from({ length: 7 }, () => []) };
 }
 
+function latestEnvelope(variant: GameVariant) {
+  const call = saveGame.mock.calls.filter(([game]) => game === variant).at(-1);
+  if (!call) throw new Error(`Missing ${variant} save`);
+  return call[1];
+}
+
+function playOneMove(variant: GameVariant) {
+  if (variant === 'clock') {
+    const state = latestEnvelope(variant).state;
+    if (state.gameId !== 'clock') throw new Error('Expected Clock');
+    fireEvent.click(screen.getByLabelText(state.stockPiles[0].at(-1)!.id));
+  } else if (variant === 'freecell') {
+    const state = latestEnvelope(variant).state;
+    if (state.gameId !== 'freecell') throw new Error('Expected FreeCell');
+    fireEvent.click(screen.getByLabelText(state.tableau[0].at(-1)!.id));
+    const cell = screen.getAllByText('Free')[0].closest('[role="button"]');
+    if (!cell) throw new Error('Missing empty free cell');
+    fireEvent.click(cell);
+  } else if (variant === 'spider') {
+    const state = latestEnvelope(variant).state;
+    if (state.gameId !== 'spider') throw new Error('Expected Spider');
+    fireEvent.click(screen.getByLabelText(state.stock.at(-1)!.id));
+  } else {
+    fireEvent.click(screen.getByRole('button', { name: 'Draw' }));
+  }
+}
+
+const variants: GameVariant[] = ['clock', 'freecell', 'klondike', 'pyramid', 'spider'];
+
 beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', () => 1);
   vi.stubGlobal('cancelAnimationFrame', () => {});
   routeParams = { gameId: 'klondike', mode: 'resume' };
   saveGame.mockReset().mockResolvedValue(undefined);
   clearGame.mockReset().mockResolvedValue(undefined);
+  replace.mockReset();
   model = {
     hydrated: true,
+    hydrationError: null,
+    retryHydration: vi.fn().mockResolvedValue(undefined),
     settings: { ...defaultSettings },
     saves: { ...defaultSavedGames },
     snapshots: { ...defaultSavedSnapshots },
@@ -86,6 +119,81 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('game interactions', () => {
+  it.each(variants)('preserves %s deal origin and Undo/Redo through Resume', (variant) => {
+    routeParams = { gameId: variant, mode: 'new' };
+    const view = render(<GameRoute />);
+    const initial = latestEnvelope(variant).state;
+    playOneMove(variant);
+    const progressed = latestEnvelope(variant);
+    expect(progressed.state).not.toEqual(initial);
+    expect(progressed.history?.initial).toEqual(initial);
+    expect(progressed.history?.past).toEqual([initial]);
+    view.unmount();
+
+    Object.assign(model.saves, { [variant]: progressed });
+    routeParams = { gameId: variant, mode: 'resume' };
+    render(<GameRoute />);
+    expect(latestEnvelope(variant).state).toEqual(progressed.state);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(latestEnvelope(variant).state).toEqual(initial);
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(latestEnvelope(variant).state).toEqual(progressed.state);
+    fireEvent.click(screen.getByRole('button', { name: 'Restart' }));
+    expect(latestEnvelope(variant).state).toEqual(initial);
+  });
+
+  it.each(variants)('preserves %s deal origin and Undo through Snapshot Save/Load', (variant) => {
+    model.settings = { ...model.settings, clockDebugTools: true, freeCellDebugTools: true,
+      klondikeDebugTools: true, pyramidDebugTools: true, spiderDebugTools: true };
+    routeParams = { gameId: variant, mode: 'new' };
+    const view = render(<GameRoute />);
+    const initial = latestEnvelope(variant).state;
+    playOneMove(variant);
+    const progressed = latestEnvelope(variant).state;
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    const saved = vi.mocked(model.saveSnapshot).mock.calls.at(-1)?.[1];
+    if (!saved) throw new Error('Missing Snapshot');
+    Object.assign(model.snapshots, { [variant]: [{ ...saved, id: 'snapshot', label: 'Earlier deal' }] });
+    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    view.rerender(<GameRoute />);
+    fireEvent.click(screen.getByRole('button', { name: 'Load' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Earlier deal' }));
+    expect(latestEnvelope(variant).state).toEqual(progressed);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(latestEnvelope(variant).state).toEqual(initial);
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(latestEnvelope(variant).state).toEqual(progressed);
+    fireEvent.click(screen.getByRole('button', { name: 'Restart' }));
+    expect(latestEnvelope(variant).state).toEqual(initial);
+  });
+
+  it('replaces New URL only after the new deal has been saved, then resumes it', () => {
+    saveKlondike(emptyKlondike());
+    routeParams = { gameId: 'klondike', mode: 'new' };
+    const view = render(<GameRoute />);
+    const call = saveGame.mock.calls.at(-1);
+    if (!call || call[1].state.gameId !== 'klondike') throw new Error('Missing new deal');
+    const state = call[1].state;
+    expect(state.stock).toHaveLength(24);
+    expect(replace).not.toHaveBeenCalled();
+    model.saves.klondike = { gameId: 'klondike', updatedAt: call[1].updatedAt, state };
+    view.rerender(<GameRoute />);
+    expect(replace).toHaveBeenCalledWith('/game/klondike?mode=resume');
+    routeParams = { gameId: 'klondike', mode: 'resume' };
+    view.rerender(<GameRoute />);
+    expect(presentKlondike()).toEqual(state);
+  });
+
+  it('blocks game mounting on storage read failure and offers retry', () => {
+    model.hydrated = false;
+    model.hydrationError = 'Saved games could not be read. Retry before playing.';
+    render(<GameRoute />);
+    expect(screen.getByRole('alert').textContent).toContain('could not be read');
+    expect(saveGame).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry storage' }));
+    expect(model.retryHydration).toHaveBeenCalledOnce();
+  });
+
   it('waits for storage before mounting a resumable game', () => {
     model.hydrated = false;
     const view = render(<GameRoute />);

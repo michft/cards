@@ -257,13 +257,18 @@ export function getHints(
   options?: KlondikeRuleOptions,
 ): KlondikeHint[] {
   return getLegalMoves(state, options)
-    .filter((move) => !(
-      move.kind === 'move'
-      && move.source.zone === 'tableau'
-      && move.source.cardIndex === 0
-      && move.destination.zone === 'tableau'
-      && state.tableau[move.destination.pileIndex].length === 0
-    ))
+    .filter((move) => {
+      if (move.kind !== 'move' || move.source.zone !== 'tableau' || move.destination.zone !== 'tableau') {
+        return true;
+      }
+      if (move.source.cardIndex === 0) {
+        return state.tableau[move.destination.pileIndex].length > 0;
+      }
+
+      const revealed = state.tableau[move.source.pileIndex][move.source.cardIndex - 1];
+      // Reversible face-up shuffles make no progress unless they uncover a promotion.
+      return !revealed.faceUp || state.foundations.some((pile) => canPlaceOnFoundation(revealed, pile));
+    })
     .map((move) => scoreMove(state, move, mode))
     .sort((left, right) => right.score - left.score)
     .map((candidate) => ({

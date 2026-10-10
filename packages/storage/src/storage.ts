@@ -9,13 +9,13 @@ export async function loadJson<T>(
   key: string,
   fallback: T,
 ): Promise<T> {
+  const value = await adapter.getItem(key);
+
+  if (!value) {
+    return fallback;
+  }
+
   try {
-    const value = await adapter.getItem(key);
-
-    if (!value) {
-      return fallback;
-    }
-
     return JSON.parse(value) as T;
   } catch {
     return fallback;

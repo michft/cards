@@ -29,6 +29,64 @@ function card(
 }
 
 describe('Klondike engine', () => {
+  function shuffleLoopState(): KlondikeState {
+    return {
+      gameId: 'klondike', drawCount: 1, emptyTableauPolicy: 'king-only', completed: false,
+      stock: [card('stock-four', 'diamonds', 4), card('stock-ace', 'clubs', 1)],
+      waste: [], foundations: [[], [], [], []],
+      tableau: [
+        [card('seven-clubs', 'clubs', 7), card('six-hearts', 'hearts', 6)],
+        [card('seven-spades', 'spades', 7)], [], [], [], [], [],
+      ],
+    };
+  }
+
+  it.each(['balanced', 'mobility', 'foundation-first'] as const)(
+    'draws instead of bouncing a face-up card between columns in %s mode',
+    (mode) => {
+      let state = shuffleLoopState();
+      expect(getHint(state, mode)?.move).toEqual({ kind: 'draw' });
+      for (let index = 0; index < 8; index += 1) {
+        const hint = getHint(state, mode);
+        if (!hint) break;
+        expect(hint.move.kind === 'move' && hint.move.destination.zone === 'tableau').toBe(false);
+        state = applyKlondikeMove(state, hint.move);
+      }
+    },
+  );
+
+  it.each(['king-only', 'any'] as const)(
+    'offers no reversible shuffle with exhausted stock and %s empty columns',
+    (emptyTableauPolicy) => {
+      const state = { ...shuffleLoopState(), stock: [], emptyTableauPolicy };
+      expect(getHint(state)).toBeNull();
+      expect(getLegalMoves(state)).toContainEqual({
+        kind: 'move', source: { zone: 'tableau', pileIndex: 0, cardIndex: 1 },
+        destination: { zone: 'tableau', pileIndex: 1 },
+      });
+    },
+  );
+
+  it('keeps a face-up move that frees a tableau column', () => {
+    const state = shuffleLoopState();
+    state.tableau[0] = [card('six-hearts', 'hearts', 6)];
+    expect(getHint(state)?.move).toEqual({
+      kind: 'move', source: { zone: 'tableau', pileIndex: 0, cardIndex: 0 },
+      destination: { zone: 'tableau', pileIndex: 1 },
+    });
+  });
+
+  it('keeps a face-up rearrangement that makes a foundation promotion available', () => {
+    const state = shuffleLoopState();
+    state.foundations[0] = createDeck('foundation').filter(
+      (current) => current.suit === 'clubs' && current.rank <= 6,
+    );
+    expect(getHint(state)?.move).toEqual({
+      kind: 'move', source: { zone: 'tableau', pileIndex: 0, cardIndex: 1 },
+      destination: { zone: 'tableau', pileIndex: 1 },
+    });
+  });
+
   it('hints draw instead of looping whole piles through empty columns', () => {
     const deck = createDeck('hint-loop');
     const state: KlondikeState = {

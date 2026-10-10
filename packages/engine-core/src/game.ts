@@ -4,4 +4,9 @@ export type PersistedGameEnvelope<TState extends object> = {
   gameId: string;
   updatedAt: string;
   state: TState;
+  history?: {
+    initial: TState;
+    past: TState[];
+    future: TState[];
+  };
 };

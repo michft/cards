@@ -17,17 +17,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
-import { cloneGameState } from './shared/clone-game-state';
+import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack } from './shared/card-stack';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
-type HistoryState = {
-  initial: PyramidState;
-  past: PyramidState[];
-  present: PyramidState;
-  future: PyramidState[];
-};
+type HistoryState = GameHistory<PyramidState>;
 
 type Props = {
   mode: 'new' | 'resume';
@@ -48,9 +43,7 @@ export function PyramidGameScreen({ mode }: Props) {
   } = useAppModel();
   const savedGame = saves.pyramid;
   const [history, setHistory] = useState<HistoryState>(() =>
-    createHistoryState(
-      mode === 'resume' && savedGame ? savedGame.state : createPyramidGame(Math.random),
-    ),
+    mode === 'resume' && savedGame ? restoreGameHistory(savedGame) : createHistoryState(createPyramidGame(Math.random)),
   );
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<PyramidSource | null>(null);
@@ -74,14 +67,10 @@ export function PyramidGameScreen({ mode }: Props) {
       return;
     }
 
-    const envelope: PersistedGameEnvelope<PyramidState> = {
-      gameId: 'pyramid',
-      updatedAt: new Date().toISOString(),
-      state: history.present,
-    };
+    const envelope = persistGameHistory('pyramid', history);
 
     void saveGame('pyramid', envelope);
-  }, [clearGame, history.present, hydrated, saveGame]);
+  }, [clearGame, history, hydrated, saveGame]);
 
   function clearInteraction() {
     setGameMenuOpen(false);
@@ -153,16 +142,12 @@ export function PyramidGameScreen({ mode }: Props) {
   });
 
   function saveCurrentState() {
-    const envelope: PersistedGameEnvelope<PyramidState> = {
-      gameId: 'pyramid',
-      updatedAt: new Date().toISOString(),
-      state: history.present,
-    };
+    const envelope = persistGameHistory('pyramid', history);
     void saveSnapshot('pyramid', envelope);
   }
 
   function loadSnapshot(snapshot: PersistedGameEnvelope<PyramidState>) {
-    setHistory(createHistoryState(snapshot.state));
+    setHistory(restoreGameHistory(snapshot));
     clearInteraction();
   }
 
@@ -248,7 +233,7 @@ export function PyramidGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/clock?mode=new');
+                  router.replace('/game/clock?mode=resume');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
@@ -258,7 +243,7 @@ export function PyramidGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/freecell?mode=new');
+                  router.replace('/game/freecell?mode=resume');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
@@ -268,7 +253,7 @@ export function PyramidGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/klondike?mode=new');
+                  router.replace('/game/klondike?mode=resume');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
@@ -281,7 +266,7 @@ export function PyramidGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/spider?mode=new');
+                  router.replace('/game/spider?mode=resume');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
@@ -291,7 +276,7 @@ export function PyramidGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.push('/');
+                  router.replace('/');
                 }}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
               >
@@ -461,17 +446,6 @@ export function PyramidGameScreen({ mode }: Props) {
       </View>
     </SafeAreaView>
   );
-}
-
-function createHistoryState(state: PyramidState): HistoryState {
-  const initial = cloneGameState(state);
-
-  return {
-    initial,
-    past: [],
-    present: cloneGameState(initial),
-    future: [],
-  };
 }
 
 function isSameSource(left: PyramidSource | null, right: PyramidSource): boolean {

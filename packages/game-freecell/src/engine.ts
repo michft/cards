@@ -108,6 +108,10 @@ function canPlaceOnDestination(
     return false;
   }
 
+  if (cards.length > getMaxMovableTableauDepth(state, destination.pileIndex)) {
+    return false;
+  }
+
   if (pile.length === 0) {
     return true;
   }
@@ -135,10 +139,6 @@ function getSourceCards(
   const cards = pile.slice(source.cardIndex);
 
   if (!isValidTableauSequence(cards, options.tableauBuildPolicy)) {
-    return null;
-  }
-
-  if (cards.length > getMaxMovableTableauDepth(state)) {
     return null;
   }
 
@@ -252,7 +252,10 @@ function isValidBuildPair(
   return upper.color !== lower.color;
 }
 
-function getMaxMovableTableauDepth(state: FreeCellState): number {
+function getMaxMovableTableauDepth(state: FreeCellState, destinationPileIndex: number): number {
   const emptyFreeCells = state.freeCells.filter((card) => card === null).length;
-  return emptyFreeCells + 1;
+  const auxiliaryEmptyColumns = state.tableau.filter(
+    (pile, pileIndex) => pile.length === 0 && pileIndex !== destinationPileIndex,
+  ).length;
+  return (emptyFreeCells + 1) * 2 ** auxiliaryEmptyColumns;
 }

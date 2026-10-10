@@ -17,10 +17,16 @@ These rules should apply to every game module (`Klondike`, `Spider`, `FreeCell`,
 - Use the floating `Games ▾` dropdown in all game screens.
 - Keep game entries alphabetical in dropdowns.
 - Keep `< home` as the final dropdown item.
+- Games menu entries resume existing progress, creating a deal only when no save exists.
+- Replace the game route when switching variants or exiting home so older mounted games cannot reappear over newer progress.
+- Replace New URLs with Resume after the new deal is saved; reloading must not redeal.
 
 ## Persistence
 - Persist one resumable in-progress game per variant.
 - Support manual Save/Load snapshots per game.
+- Save original deal and up to 50 Undo/Redo states with both resumable games and snapshots. Restart restores the original deal after Resume/Load.
+- Legacy saves without history retain the saved position as their only available restart point.
+- Storage read failures must block hydration and writes until a successful retry; unread saves must never become empty defaults.
 
 ## Settings
 - Route each game to its own settings context (e.g. `?game=klondike`, `?game=spider`, `?game=freecell`).
@@ -33,7 +39,7 @@ These rules should apply to every game module (`Klondike`, `Spider`, `FreeCell`,
 - Handle shortcuts only while the game screen is focused; Settings and Rules must not modify a hidden game.
 - Leave shortcuts in inputs, textareas, selects, and editable content to the browser.
 - Support Cmd/Ctrl+Z (Undo), Cmd/Ctrl+Shift+Z (Redo), Cmd/Ctrl+N (New), Cmd/Ctrl+R (Restart), and Cmd/Ctrl+A (Offload where available).
-- Preserve Klondike's existing unmodified U/R/H/D/N shortcuts while its screen is focused.
+- Preserve Klondike's unmodified U/R/H/D shortcuts while focused. Plain N must not silently start a new deal.
 
 ## Validation
 - Run `pnpm typecheck` and `pnpm test` for engine, persistence, and interaction regressions.
