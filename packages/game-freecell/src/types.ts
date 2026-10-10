@@ -10,6 +10,7 @@ export type FreeCellTableauBuildPolicy =
 
 export type FreeCellState = {
   gameId: FreeCellGameId;
+  tableauBuildPolicy?: FreeCellTableauBuildPolicy;
   foundations: PlayingCard[][];
   freeCells: Array<PlayingCard | null>;
   tableau: PlayingCard[][];

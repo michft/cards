@@ -18,6 +18,41 @@ describe('createClockGame', () => {
 });
 
 describe('clock moves', () => {
+  it('resolves a complete dealt game with a King initially in stock', () => {
+    let seed = 2;
+    let state = createClockGame(() => {
+      seed = (1664525 * seed + 1013904223) >>> 0;
+      return seed / 2 ** 32;
+    });
+    const kingPileIndex = state.stockPiles.findIndex((pile) => pile[0]?.rank === 13);
+    expect(kingPileIndex).toBeGreaterThanOrEqual(0);
+
+    const drawnKing = drawClockStock(state, kingPileIndex);
+    expect(drawnKing.activeCard?.rank).toBe(13);
+    const returnedKing = placeClockActiveCard(drawnKing);
+    expect(returnedKing.completedStockPiles).toContain(kingPileIndex);
+    expect(drawClockStock(returnedKing, kingPileIndex)).toBe(returnedKing);
+
+    state = returnedKing;
+    for (let move = 0; move < 60 && !state.won && !state.lost; move += 1) {
+      const next = state.activeCard
+        ? placeClockActiveCard(state)
+        : state.stockPiles.reduce(
+            (candidate, _, pileIndex) => candidate === state
+              ? drawClockStock(state, pileIndex)
+              : candidate,
+            state,
+          );
+      if (next === state) {
+        break;
+      }
+      state = next;
+    }
+
+    expect(state.won || state.lost).toBe(true);
+    expect(state.returnedKingIds).toHaveLength(4);
+  });
+
   it('draws one card from stock to active card', () => {
     const state: ClockState = {
       gameId: 'clock',

@@ -11,7 +11,7 @@ import {
   type PyramidState,
 } from '@mumscards/game-pyramid';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -47,7 +47,6 @@ export function PyramidGameScreen({ mode }: Props) {
     snapshots,
   } = useAppModel();
   const savedGame = saves.pyramid;
-  const resumeRestoredRef = useRef(false);
   const [history, setHistory] = useState<HistoryState>(() =>
     createHistoryState(
       mode === 'resume' && savedGame ? savedGame.state : createPyramidGame(Math.random),
@@ -64,22 +63,6 @@ export function PyramidGameScreen({ mode }: Props) {
   const canRecycle = stockCount === 0
     && history.present.waste.length > 0
     && history.present.recyclesUsed < history.present.maxRecycles;
-
-  useEffect(() => {
-    resumeRestoredRef.current = false;
-    setHistory(createHistoryState(createPyramidGame(Math.random)));
-    clearInteraction();
-  }, [mode]);
-
-  useEffect(() => {
-    if (!hydrated || mode !== 'resume' || resumeRestoredRef.current || !savedGame) {
-      return;
-    }
-
-    resumeRestoredRef.current = true;
-    setHistory(createHistoryState(savedGame.state));
-    clearInteraction();
-  }, [hydrated, mode, savedGame]);
 
   useEffect(() => {
     if (!hydrated) {

@@ -4,7 +4,7 @@ import type { PlayingCard } from '@mumscards/engine-core';
 import { Ionicons } from '@expo/vector-icons';
 import { createClockGame, drawClockStock, placeClockActiveCard, type ClockState } from '@mumscards/game-clock';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -48,7 +48,6 @@ export function ClockGameScreen({ mode }: Props) {
     snapshots,
   } = useAppModel();
   const savedGame = saves.clock;
-  const resumeRestoredRef = useRef(false);
   const [history, setHistory] = useState<HistoryState>(() =>
     createHistoryState(mode === 'resume' && savedGame ? savedGame.state : createClockGame(Math.random)),
   );
@@ -88,22 +87,6 @@ export function ClockGameScreen({ mode }: Props) {
   const canvasPadding = Math.max(spacing.md, Math.round(contentRadius - radiusPx));
   const clockCanvasSize = boardSize + canvasPadding * 2;
   const boardMargin = Math.max(spacing.sm, (availableWidth - clockCanvasSize) / 2);
-
-  useEffect(() => {
-    resumeRestoredRef.current = false;
-    setHistory(createHistoryState(createClockGame(Math.random)));
-    clearInteraction();
-  }, [mode]);
-
-  useEffect(() => {
-    if (!hydrated || mode !== 'resume' || resumeRestoredRef.current || !savedGame) {
-      return;
-    }
-
-    resumeRestoredRef.current = true;
-    setHistory(createHistoryState(savedGame.state));
-    clearInteraction();
-  }, [hydrated, mode, savedGame]);
 
   useEffect(() => {
     if (!hydrated) {
@@ -540,7 +523,6 @@ export function ClockGameScreen({ mode }: Props) {
                 const canStartFromPile = Boolean(
                   history.present.activeCard === null
                     && top
-                    && top.rank !== 13
                     && !completedStockPiles.includes(pileIndex),
                 );
                 const topIsReturnedKing = Boolean(top && returnedKingIds.includes(top.id));

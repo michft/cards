@@ -32,6 +32,7 @@ export type KlondikeHint = {
 export type KlondikeState = {
   gameId: KlondikeGameId;
   drawCount: KlondikeDrawCount;
+  emptyTableauPolicy?: KlondikeEmptyTableauPolicy;
   completed: boolean;
   stock: PlayingCard[];
   waste: PlayingCard[];

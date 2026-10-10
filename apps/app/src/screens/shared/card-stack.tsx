@@ -2,10 +2,9 @@ import { rankLabel } from '@mumscards/engine-core';
 import type { PlayingCard } from '@mumscards/engine-core';
 import type { KlondikeTableauCard } from '@mumscards/game-klondike';
 import type { ReactNode } from 'react';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   PanResponder,
-  type PanResponderGestureState,
   Pressable,
   StyleSheet,
   Text,
@@ -75,9 +74,7 @@ export function CardStack({
   const hiddenOffset = Math.round(cardHeight * (expanded ? 0.24 : 0.18));
   const faceUpOffset = Math.round(cardHeight * (expanded ? 0.48 : 0.28));
   const wasteOffset = Math.max(18, Math.round(cardWidth * 0.42));
-  const visibleCards = hiddenFromIndex === undefined ? cards : cards.slice(0, hiddenFromIndex);
-
-  if (visibleCards.length === 0) {
+  if (cards.length === 0) {
     const placeholder = (
       <View
         style={[
@@ -105,7 +102,7 @@ export function CardStack({
 
   const totalHeight = layoutMode === 'waste'
     ? cardHeight
-    : visibleCards.reduce((height, card, index) => {
+    : cards.reduce((height, card, index) => {
       if (index === 0) {
         return cardHeight;
       }
@@ -114,7 +111,7 @@ export function CardStack({
       return height + (faceUp ? faceUpOffset : hiddenOffset);
     }, 0);
   const totalWidth = layoutMode === 'waste'
-    ? cardWidth + wasteOffset * Math.max(0, visibleCards.length - 1)
+    ? cardWidth + wasteOffset * Math.max(0, cards.length - 1)
     : cardWidth;
 
   return (
@@ -127,17 +124,17 @@ export function CardStack({
         },
       ]}
     >
-      {visibleCards.map((card, index) => {
+      {cards.map((card, index) => {
         const faceUp = !('faceUp' in card) || card.faceUp;
-        const isBottomCard = index === visibleCards.length - 1;
+        const isBottomCard = index === cards.length - 1;
         const offset = layoutMode === 'waste'
           ? 0
-          : visibleCards.slice(0, index).reduce((value, current) => {
+          : cards.slice(0, index).reduce((value, current) => {
             const previousFaceUp = !('faceUp' in current) || current.faceUp;
             return value + (previousFaceUp ? faceUpOffset : hiddenOffset);
           }, 0);
         const horizontalOffset = layoutMode === 'waste' ? wasteOffset * index : 0;
-        const isInteractiveCard = layoutMode === 'waste' ? index === visibleCards.length - 1 : true;
+        const isInteractiveCard = layoutMode === 'waste' ? index === cards.length - 1 : true;
         const content = faceUp && variant !== 'back'
           ? renderFace(card, cardWidth, cardHeight, selected)
           : renderBack(cardWidth, cardHeight, selected, emptyState === 'recycle');
@@ -147,6 +144,7 @@ export function CardStack({
             key={card.id}
             cardHeight={cardHeight}
             cardWidth={cardWidth}
+            hidden={hiddenFromIndex !== undefined && index >= hiddenFromIndex}
             disabled={
               !faceUp ||
               !isInteractiveCard ||
@@ -192,6 +190,7 @@ function DraggableCardLayer({
   cardWidth,
   children,
   disabled,
+  hidden,
   left,
   onActivate,
   onDragEnd,
@@ -205,6 +204,7 @@ function DraggableCardLayer({
   cardWidth: number;
   children: ReactNode;
   disabled?: boolean;
+  hidden?: boolean;
   left?: number;
   onActivate?(): void;
   onDragEnd?(payload: DragPayload): void;
@@ -219,6 +219,12 @@ function DraggableCardLayer({
   const dragStartedRef = useRef(false);
   const holdTriggeredRef = useRef(false);
   const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (holdTimeoutRef.current !== null) {
+      clearTimeout(holdTimeoutRef.current);
+    }
+  }, []);
 
   function measurePayload(
     pageX: number,
@@ -240,7 +246,7 @@ function DraggableCardLayer({
   }
 
   function clearHoldTimer() {
-    if (holdTimeoutRef.current) {
+    if (holdTimeoutRef.current !== null) {
       clearTimeout(holdTimeoutRef.current);
       holdTimeoutRef.current = null;
     }
@@ -348,6 +354,7 @@ function DraggableCardLayer({
       ref={containerRef}
       style={[
         styles.cardLayer,
+        hidden && styles.hiddenCard,
         {
           top,
           left,
@@ -450,6 +457,9 @@ const styles = StyleSheet.create({
   cardLayer: {
     position: 'absolute',
     left: 0,
+  },
+  hiddenCard: {
+    opacity: 0,
   },
   placeholder: {
     borderWidth: 1,

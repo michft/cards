@@ -4,6 +4,28 @@ import { applyFreeCellMove, createFreeCellGame } from '../src/engine';
 import type { FreeCellState } from '../src/types';
 
 describe('createFreeCellGame', () => {
+  it('retains the dealt tableau policy when restored after settings change', () => {
+    const dealt = createFreeCellGame(() => 0.5, { tableauBuildPolicy: 'suit-matching' });
+    const game: FreeCellState = {
+      ...dealt,
+      tableau: [
+        [{ id: 'src', suit: 'hearts', rank: 6, color: 'red' }],
+        [{ id: 'dst', suit: 'spades', rank: 7, color: 'black' }],
+        [], [], [], [], [], [],
+      ],
+    };
+    const source = { zone: 'tableau', pileIndex: 0, cardIndex: 0 } as const;
+    const destination = { zone: 'tableau', pileIndex: 1 } as const;
+
+    expect(dealt.tableauBuildPolicy).toBe('suit-matching');
+    expect(applyFreeCellMove(game, source, destination)).toBe(game);
+    const explicitlyOverridden = applyFreeCellMove(game, source, destination, {
+      tableauBuildPolicy: 'alternate-red-black',
+    });
+    expect(explicitlyOverridden.tableau[1]).toHaveLength(2);
+    expect(explicitlyOverridden.tableauBuildPolicy).toBe('suit-matching');
+  });
+
   it('deals 52 cards across 8 tableau piles', () => {
     const game = createFreeCellGame(() => 0.5);
     const count = game.tableau.reduce((total, pile) => total + pile.length, 0);

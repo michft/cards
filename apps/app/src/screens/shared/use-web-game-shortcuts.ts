@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 import { Platform } from 'react-native';
 
 type ShortcutHandlers = {
@@ -16,13 +17,13 @@ export function useWebGameShortcuts({
   onRestart,
   onOffload,
 }: ShortcutHandlers) {
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (Platform.OS !== 'web') {
       return;
     }
 
     const handler = (event: KeyboardEvent) => {
-      if ((event.target as HTMLElement | null)?.tagName === 'INPUT') {
+      if (isEditableTarget(event.target)) {
         return;
       }
 
@@ -33,37 +34,43 @@ export function useWebGameShortcuts({
         return;
       }
 
-      if (key === 'z' && !event.shiftKey) {
+      if (key === 'z' && !event.shiftKey && onUndo) {
         event.preventDefault();
-        onUndo?.();
+        onUndo();
         return;
       }
 
-      if (key === 'z' && event.shiftKey) {
+      if (key === 'z' && event.shiftKey && onRedo) {
         event.preventDefault();
-        onRedo?.();
+        onRedo();
         return;
       }
 
-      if (key === 'n' && !event.shiftKey) {
+      if (key === 'n' && !event.shiftKey && onNew) {
         event.preventDefault();
-        onNew?.();
+        onNew();
         return;
       }
 
-      if (key === 'r' && !event.shiftKey) {
+      if (key === 'r' && !event.shiftKey && onRestart) {
         event.preventDefault();
-        onRestart?.();
+        onRestart();
         return;
       }
 
-      if (key === 'a' && !event.shiftKey) {
+      if (key === 'a' && !event.shiftKey && onOffload) {
         event.preventDefault();
-        onOffload?.();
+        onOffload();
       }
     };
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [onNew, onOffload, onRedo, onRestart, onUndo]);
+  }, [onNew, onOffload, onRedo, onRestart, onUndo]));
+}
+
+export function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(
+    target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'),
+  );
 }

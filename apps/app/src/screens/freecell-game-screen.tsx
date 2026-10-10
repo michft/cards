@@ -1,3 +1,4 @@
+import { isSafeFoundationMove } from '@mumscards/engine-core';
 import type { PersistedGameEnvelope } from '@mumscards/engine-core';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -8,7 +9,7 @@ import {
   type FreeCellState,
 } from '@mumscards/game-freecell';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -44,12 +45,12 @@ export function FreeCellGameScreen({ mode }: Props) {
     deleteSnapshot,
   } = useAppModel();
   const savedGame = saves.freecell;
-  const resumeRestoredRef = useRef(false);
   const [history, setHistory] = useState<HistoryState>(() =>
     createHistoryState(
-      mode === 'resume' && savedGame ? savedGame.state : createFreeCellGame(Math.random),
+      mode === 'resume' && savedGame ? savedGame.state : createFreeCellGame(Math.random, { tableauBuildPolicy: settings.freeCellTableauBuildPolicy }),
     ),
   );
+  const tableauBuildPolicy = history.present.tableauBuildPolicy ?? 'alternate-red-black';
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<FreeCellSource | null>(null);
   const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
@@ -63,22 +64,6 @@ export function FreeCellGameScreen({ mode }: Props) {
   const topRowWidth = cardWidth * 8 + rowGap * 7;
   const tableauRowWidth = cardWidth * 8 + rowGap * 7;
   const boardMinWidth = Math.max(topRowWidth, tableauRowWidth);
-
-  useEffect(() => {
-    resumeRestoredRef.current = false;
-    setHistory(createHistoryState(createFreeCellGame(Math.random)));
-    clearInteraction();
-  }, [mode]);
-
-  useEffect(() => {
-    if (!hydrated || mode !== 'resume' || resumeRestoredRef.current || !savedGame) {
-      return;
-    }
-
-    resumeRestoredRef.current = true;
-    setHistory(createHistoryState(savedGame.state));
-    clearInteraction();
-  }, [hydrated, mode, savedGame]);
 
   useEffect(() => {
     if (!hydrated) {
@@ -123,7 +108,7 @@ export function FreeCellGameScreen({ mode }: Props) {
           current.present,
           nextMove.source,
           nextMove.destination,
-          { tableauBuildPolicy: settings.freeCellTableauBuildPolicy },
+          { tableauBuildPolicy },
         );
 
         if (JSON.stringify(nextWithRules) === JSON.stringify(current.present)) {
@@ -140,7 +125,7 @@ export function FreeCellGameScreen({ mode }: Props) {
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [history.present, offloadActive, settings.freeCellTableauBuildPolicy]);
+  }, [history.present, offloadActive, tableauBuildPolicy]);
 
   function clearInteraction() {
     setOffloadActive(false);
@@ -163,7 +148,7 @@ export function FreeCellGameScreen({ mode }: Props) {
   }
 
   function startNewGame() {
-    setHistory(createHistoryState(createFreeCellGame(Math.random)));
+    setHistory(createHistoryState(createFreeCellGame(Math.random, { tableauBuildPolicy: settings.freeCellTableauBuildPolicy })));
     clearInteraction();
   }
 
@@ -257,7 +242,7 @@ export function FreeCellGameScreen({ mode }: Props) {
     }
 
     const next = applyFreeCellMove(history.present, selectedSource, destination, {
-      tableauBuildPolicy: settings.freeCellTableauBuildPolicy,
+      tableauBuildPolicy,
     });
 
     if (JSON.stringify(next) === JSON.stringify(history.present)) {
@@ -281,7 +266,7 @@ export function FreeCellGameScreen({ mode }: Props) {
   }
 
   function showHint() {
-    const hints = getFreeCellHints(history.present, settings.freeCellTableauBuildPolicy);
+    const hints = getFreeCellHints(history.present, tableauBuildPolicy);
 
     if (hints.length === 0) {
       setHintText('No legal move found.');
@@ -546,7 +531,7 @@ function getNextFreeCellFoundationMove(
   for (let cellIndex = 0; cellIndex < state.freeCells.length; cellIndex += 1) {
     const card = state.freeCells[cellIndex];
 
-    if (!card) {
+    if (!card || !isSafeFoundationMove(card, state.foundations, state.tableauBuildPolicy ?? 'alternate-red-black')) {
       continue;
     }
 
@@ -564,7 +549,7 @@ function getNextFreeCellFoundationMove(
     const pile = state.tableau[pileIndex];
     const card = pile[pile.length - 1];
 
-    if (!card) {
+    if (!card || !isSafeFoundationMove(card, state.foundations, state.tableauBuildPolicy ?? 'alternate-red-black')) {
       continue;
     }
 

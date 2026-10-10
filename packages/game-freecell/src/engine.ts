@@ -12,7 +12,8 @@ type FreeCellRuleOptions = {
   tableauBuildPolicy?: FreeCellTableauBuildPolicy;
 };
 
-export function createFreeCellGame(random = Math.random): FreeCellState {
+export function createFreeCellGame(random = Math.random, options?: FreeCellRuleOptions): FreeCellState {
+  const resolved = resolveOptions(options);
   const deck = shuffle(createDeck('freecell'), random);
   const tableau: PlayingCard[][] = Array.from({ length: 8 }, () => []);
 
@@ -22,6 +23,7 @@ export function createFreeCellGame(random = Math.random): FreeCellState {
 
   return {
     gameId: 'freecell',
+    tableauBuildPolicy: resolved.tableauBuildPolicy,
     foundations: Array.from({ length: 4 }, () => []),
     freeCells: [null, null, null, null],
     tableau,
@@ -35,7 +37,7 @@ export function applyFreeCellMove(
   destination: FreeCellDestination,
   options?: FreeCellRuleOptions,
 ): FreeCellState {
-  const resolved = resolveOptions(options);
+  const resolved = resolveOptions(options, state);
   const payload = getSourceCards(state, source, resolved);
 
   if (!payload) {
@@ -204,9 +206,12 @@ function shuffle<T>(items: T[], random: () => number): T[] {
   return next;
 }
 
-function resolveOptions(options?: FreeCellRuleOptions): Required<FreeCellRuleOptions> {
+function resolveOptions(
+  options?: FreeCellRuleOptions,
+  state?: FreeCellState,
+): Required<FreeCellRuleOptions> {
   return {
-    tableauBuildPolicy: options?.tableauBuildPolicy ?? 'alternate-red-black',
+    tableauBuildPolicy: options?.tableauBuildPolicy ?? state?.tableauBuildPolicy ?? 'alternate-red-black',
   };
 }
 

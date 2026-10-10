@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { createSpiderGame } from '@mumscards/game-spider';
 import type { SpiderState, SpiderTableauCard } from '@mumscards/game-spider';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -33,7 +33,6 @@ export function SpiderGameScreen({ mode }: Props) {
   const { width } = useWindowDimensions();
   const { hydrated, saves, saveGame, clearGame, settings, snapshots, saveSnapshot, deleteSnapshot } = useAppModel();
   const savedGame = saves.spider;
-  const resumeRestoredRef = useRef(false);
   const [history, setHistory] = useState<SpiderHistoryState>(() =>
     createSpiderHistoryState(
       mode === 'resume' && savedGame
@@ -52,35 +51,9 @@ export function SpiderGameScreen({ mode }: Props) {
   const cardWidth = Math.max(46, Math.min(72, availableWidth / 11.4));
   const rowGap = spacing.sm;
   const boardMinWidth = cardWidth * 10 + rowGap * 9;
-  const suitModeLabel = getSpiderSuitModeLabel(settings.spiderSuitMode);
+  const suitModeLabel = getSpiderSuitModeLabel(history.present.suitMode);
   const canDealStock = history.present.stock.length >= 10 && history.present.tableau.every((pile) => pile.length > 0);
   const won = history.present.completedRuns >= 8;
-
-  useEffect(() => {
-    resumeRestoredRef.current = false;
-    setHistory(
-      createSpiderHistoryState(
-        createSpiderGame(Math.random, { suitMode: settings.spiderSuitMode }),
-      ),
-    );
-    setSelectedSource(null);
-    setGameMenuOpen(false);
-    setExpandedTableauPile(null);
-    setSnapshotPickerOpen(false);
-  }, [mode, settings.spiderSuitMode]);
-
-  useEffect(() => {
-    if (!hydrated || mode !== 'resume' || resumeRestoredRef.current || !savedGame) {
-      return;
-    }
-
-    resumeRestoredRef.current = true;
-    setHistory(createSpiderHistoryState(savedGame.state));
-    setSelectedSource(null);
-    setGameMenuOpen(false);
-    setExpandedTableauPile(null);
-    setSnapshotPickerOpen(false);
-  }, [hydrated, mode, savedGame]);
 
   useEffect(() => {
     if (!hydrated) {

@@ -67,7 +67,7 @@ export function drawClockStock(state: ClockState, pileIndex: number): ClockState
   const sourcePile = next.stockPiles[pileIndex];
   const top = sourcePile[sourcePile.length - 1];
 
-  if (!top || top.rank === 13) {
+  if (!top) {
     return state;
   }
 
