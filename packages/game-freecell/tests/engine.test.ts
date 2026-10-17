@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { PlayingCard } from '@mumscards/engine-core';
 
 import { applyFreeCellMove, createFreeCellGame } from '../src/engine';
 import type { FreeCellState } from '../src/types';
@@ -85,7 +86,7 @@ describe('createFreeCellGame', () => {
     expect(suitMatchBlocked.tableau[1]).toHaveLength(1);
   });
 
-  it('limits tableau stack moves to empty free cells + 1', () => {
+  it('limits tableau stack moves to empty free cells + 1 without auxiliary columns', () => {
     const base = createFreeCellGame(() => 0.5);
     const game: FreeCellState = {
       ...base,
@@ -97,12 +98,9 @@ describe('createFreeCellGame', () => {
         ],
         [{ id: 'dst-a', suit: 'clubs', rank: 6, color: 'black' }],
         [{ id: 'dst-b', suit: 'hearts', rank: 7, color: 'red' }],
-        [],
-        [],
-        [],
-        [],
-        [],
-        [{ id: 'occ', suit: 'spades', rank: 13, color: 'black' }],
+        ...Array.from({ length: 5 }, (_, index) => [
+          { id: `occupied-${index}`, suit: 'spades' as const, rank: 13 as const, color: 'black' as const },
+        ]),
       ],
       freeCells: [
         { id: 'f1', suit: 'spades', rank: 12, color: 'black' },
@@ -129,5 +127,64 @@ describe('createFreeCellGame', () => {
       { tableauBuildPolicy: 'alternate-red-black' },
     );
     expect(blocked.tableau[2]).toHaveLength(1);
+  });
+
+  it.each(['alternate-red-black', 'any', 'suit-matching'] as const)(
+    'uses auxiliary empty columns for supermoves under %s builds',
+    (tableauBuildPolicy) => {
+      const run: PlayingCard[] = Array.from({ length: 8 }, (_, index) => {
+        const red = tableauBuildPolicy === 'suit-matching' || index % 2 === 0;
+        return {
+          id: `run-${index}`,
+          suit: red ? 'hearts' : 'spades',
+          rank: (12 - index) as PlayingCard['rank'],
+          color: red ? 'red' : 'black',
+        };
+      });
+      const king: PlayingCard = {
+        id: 'target', suit: tableauBuildPolicy === 'suit-matching' ? 'hearts' : 'clubs',
+        rank: 13, color: tableauBuildPolicy === 'suit-matching' ? 'red' : 'black',
+      };
+      const game: FreeCellState = {
+        ...createFreeCellGame(() => 0.5, { tableauBuildPolicy }),
+        tableau: [run, [king], [], [], ...Array.from({ length: 4 }, () => [king])],
+        freeCells: [king, king, king, null],
+      };
+      const source = { zone: 'tableau', pileIndex: 0, cardIndex: 0 } as const;
+
+      // (one free cell + 1) * 2^two auxiliary columns = eight cards.
+      const moved = applyFreeCellMove(game, source, { zone: 'tableau', pileIndex: 1 });
+      expect(moved.tableau[1]).toHaveLength(9);
+      expect(moved.tableau[0]).toHaveLength(0);
+      // An empty destination cannot also serve as an auxiliary column: limit four.
+      expect(applyFreeCellMove(game, source, { zone: 'tableau', pileIndex: 2 })).toBe(game);
+      const partial = applyFreeCellMove(
+        game, { ...source, cardIndex: 4 }, { zone: 'tableau', pileIndex: 2 },
+      );
+      expect(partial.tableau[2]).toHaveLength(4);
+    },
+  );
+
+  it.each([
+    { freeCells: 4, emptyColumns: 2, runLength: 12, allowed: true },
+    { freeCells: 0, emptyColumns: 1, runLength: 2, allowed: true },
+    { freeCells: 0, emptyColumns: 1, runLength: 3, allowed: false },
+  ])('respects supermove capacity with $freeCells free cells and $emptyColumns empty columns', ({
+    freeCells, emptyColumns, runLength, allowed,
+  }) => {
+    const run: PlayingCard[] = Array.from({ length: runLength }, (_, index) => ({
+      id: `run-${index}`, suit: index % 2 === 0 ? 'hearts' : 'spades',
+      rank: (12 - index) as PlayingCard['rank'], color: index % 2 === 0 ? 'red' : 'black',
+    }));
+    const king: PlayingCard = { id: 'king', suit: 'clubs', rank: 13, color: 'black' };
+    const game: FreeCellState = {
+      ...createFreeCellGame(() => 0.5),
+      tableau: [run, [king], ...Array.from({ length: 6 }, (_, index) => index < emptyColumns ? [] : [king])],
+      freeCells: Array.from({ length: 4 }, (_, index) => index < freeCells ? null : king),
+    };
+    const next = applyFreeCellMove(
+      game, { zone: 'tableau', pileIndex: 0, cardIndex: 0 }, { zone: 'tableau', pileIndex: 1 },
+    );
+    expect(next.tableau[1]).toHaveLength(allowed ? runLength + 1 : 1);
   });
 });

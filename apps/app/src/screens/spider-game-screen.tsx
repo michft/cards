@@ -9,17 +9,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { CardStack } from './shared/card-stack';
-import { cloneGameState } from './shared/clone-game-state';
+import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 import { palette, radius, spacing, typography } from '../theme';
 
-type SpiderHistoryState = {
-  initial: SpiderState;
-  past: SpiderState[];
-  present: SpiderState;
-  future: SpiderState[];
-};
+type HistoryState = GameHistory<SpiderState>;
 
 const MAX_SPIDER_TABLEAU_MOVE = 12;
 const MAX_SPIDER_COLLAPSE_ITERATIONS = 128;
@@ -33,12 +28,9 @@ export function SpiderGameScreen({ mode }: Props) {
   const { width } = useWindowDimensions();
   const { hydrated, saves, saveGame, clearGame, settings, snapshots, saveSnapshot, deleteSnapshot } = useAppModel();
   const savedGame = saves.spider;
-  const [history, setHistory] = useState<SpiderHistoryState>(() =>
-    createSpiderHistoryState(
-      mode === 'resume' && savedGame
-        ? savedGame.state
-        : createSpiderGame(Math.random, { suitMode: settings.spiderSuitMode }),
-    ),
+  const [history, setHistory] = useState<HistoryState>(() =>
+    mode === 'resume' && savedGame ? restoreGameHistory(savedGame)
+      : createHistoryState(createSpiderGame(Math.random, { suitMode: settings.spiderSuitMode })),
   );
   const [selectedSource, setSelectedSource] = useState<{
     pileIndex: number;
@@ -65,13 +57,9 @@ export function SpiderGameScreen({ mode }: Props) {
       return;
     }
 
-    const envelope: PersistedGameEnvelope<SpiderState> = {
-      gameId: 'spider',
-      updatedAt: new Date().toISOString(),
-      state: history.present,
-    };
+    const envelope = persistGameHistory('spider', history);
     void saveGame('spider', envelope);
-  }, [clearGame, history.present, hydrated, saveGame]);
+  }, [clearGame, history, hydrated, saveGame]);
 
   function commit(next: SpiderState) {
     setHistory((current) => ({
@@ -88,7 +76,7 @@ export function SpiderGameScreen({ mode }: Props) {
 
   function startNewGame() {
     setHistory(
-      createSpiderHistoryState(createSpiderGame(Math.random, { suitMode: settings.spiderSuitMode })),
+      createHistoryState(createSpiderGame(Math.random, { suitMode: settings.spiderSuitMode })),
     );
     setSelectedSource(null);
     setGameMenuOpen(false);
@@ -97,7 +85,7 @@ export function SpiderGameScreen({ mode }: Props) {
   }
 
   function restartGame() {
-    setHistory((current) => createSpiderHistoryState(current.initial));
+    setHistory((current) => createHistoryState(current.initial));
     setSelectedSource(null);
     setGameMenuOpen(false);
     setExpandedTableauPile(null);
@@ -154,16 +142,12 @@ export function SpiderGameScreen({ mode }: Props) {
   });
 
   function saveCurrentState() {
-    const envelope: PersistedGameEnvelope<SpiderState> = {
-      gameId: 'spider',
-      updatedAt: new Date().toISOString(),
-      state: history.present,
-    };
+    const envelope = persistGameHistory('spider', history);
     void saveSnapshot('spider', envelope);
   }
 
   function loadSnapshot(snapshot: PersistedGameEnvelope<SpiderState>) {
-    setHistory(createSpiderHistoryState(snapshot.state));
+    setHistory(restoreGameHistory(snapshot));
     setSelectedSource(null);
     setExpandedTableauPile(null);
     setSnapshotPickerOpen(false);
@@ -200,14 +184,14 @@ export function SpiderGameScreen({ mode }: Props) {
     setSelectedSource({ pileIndex, cardIndex: resolvedCardIndex });
   }
 
-  function handleDestinationPress(destinationPileIndex: number) {
+  function handleDestinationPress(destinationPileIndex: number): boolean {
     if (!selectedSource) {
-      return;
+      return false;
     }
 
     if (selectedSource.pileIndex === destinationPileIndex) {
       setSelectedSource(null);
-      return;
+      return false;
     }
 
     const resolvedSourceCardIndex = resolveSpiderSourceForDestination(
@@ -225,10 +209,11 @@ export function SpiderGameScreen({ mode }: Props) {
     );
 
     if (!next) {
-      return;
+      return false;
     }
 
     commit(next);
+    return true;
   }
 
   function dealSpiderStock() {
@@ -260,7 +245,7 @@ export function SpiderGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/clock?mode=new');
+                  router.replace('/game/clock?mode=resume');
                 }}
                 style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
               >
@@ -270,7 +255,7 @@ export function SpiderGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/freecell?mode=new');
+                  router.replace('/game/freecell?mode=resume');
                 }}
                 style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
               >
@@ -280,7 +265,7 @@ export function SpiderGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/klondike?mode=new');
+                  router.replace('/game/klondike?mode=resume');
                 }}
                 style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
               >
@@ -290,7 +275,7 @@ export function SpiderGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.replace('/game/pyramid?mode=new');
+                  router.replace('/game/pyramid?mode=resume');
                 }}
                 style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
               >
@@ -303,7 +288,7 @@ export function SpiderGameScreen({ mode }: Props) {
                 accessibilityRole="button"
                 onPress={() => {
                   setGameMenuOpen(false);
-                  router.push('/');
+                  router.replace('/');
                 }}
                 style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
               >
@@ -466,8 +451,7 @@ export function SpiderGameScreen({ mode }: Props) {
                     key={`spider-tableau-${pileIndex}`}
                     onCardPress={selectedSource ? () => handleDestinationPress(pileIndex) : undefined}
                     onFaceUpCardPress={(cardIndex) => {
-                      if (selectedSource && selectedSource.pileIndex !== pileIndex) {
-                        handleDestinationPress(pileIndex);
+                      if (selectedSource && selectedSource.pileIndex !== pileIndex && handleDestinationPress(pileIndex)) {
                         return;
                       }
 
@@ -490,17 +474,6 @@ export function SpiderGameScreen({ mode }: Props) {
       </View>
     </SafeAreaView>
   );
-}
-
-function createSpiderHistoryState(state: SpiderState): SpiderHistoryState {
-  const initial = cloneGameState(state);
-
-  return {
-    initial,
-    past: [],
-    present: cloneGameState(initial),
-    future: [],
-  };
 }
 
 function getSpiderSuitModeLabel(mode: 'spades-only' | 'hearts-only' | 'red-black' | 'all-suits') {

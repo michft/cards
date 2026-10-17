@@ -125,13 +125,52 @@ describe('App persistence', () => {
     });
   });
 
-  it('hydrates after a storage read fails', async () => {
-    adapter.getItem.mockRejectedValueOnce(new Error('Storage unavailable'));
+  it('blocks hydration and writes after a storage read fails, then recovers saved games on retry', async () => {
+    const oldEnvelope = envelope(3);
+    let unavailable = true;
+    adapter.getItem.mockImplementation(async (key) => {
+      if (key === 'mumscards.saves') {
+        if (unavailable) throw new Error('Storage unavailable');
+        return JSON.stringify({ klondike: oldEnvelope });
+      }
+      return null;
+    });
     const { useAppModel } = await import('./app-provider');
     const { result } = renderHook(useAppModel);
 
-    await waitFor(() => expect(result.current.hydrated).toBe(true));
-    expect(result.current.settings).toEqual(defaultSettings);
+    await waitFor(() => expect(result.current.hydrationError).toBeTruthy());
+    expect(result.current.hydrated).toBe(false);
+    await act(async () => {
+      await expect(result.current.clearGame('clock')).rejects.toThrow('Storage unavailable');
+    });
+    expect(adapter.setItem).not.toHaveBeenCalled();
+    expect(result.current.hydrated).toBe(false);
+
+    unavailable = false;
+    await act(async () => { await result.current.retryHydration(); });
+    expect(result.current.hydrated).toBe(true);
+    expect(result.current.hydrationError).toBeNull();
+    expect(result.current.saves.klondike).toEqual(oldEnvelope);
+    await act(async () => { await result.current.clearGame('clock'); });
+    expect(JSON.parse(adapter.setItem.mock.calls[0][1]).klondike).toEqual(oldEnvelope);
+  });
+
+  it('rejects every mutation while storage cannot be read', async () => {
+    adapter.getItem.mockRejectedValue(new Error('Storage unavailable'));
+    const { useAppModel } = await import('./app-provider');
+    const { result } = renderHook(useAppModel);
+    await waitFor(() => expect(result.current.hydrationError).toBeTruthy());
+
+    await act(async () => {
+      await expect(result.current.updateSettings({ drawCount: 1 })).rejects.toThrow('Storage unavailable');
+      await expect(result.current.saveGame('klondike', envelope(1))).rejects.toThrow('Storage unavailable');
+      await expect(result.current.clearGame('klondike')).rejects.toThrow('Storage unavailable');
+      await expect(result.current.saveSnapshot('klondike', envelope(1))).rejects.toThrow('Storage unavailable');
+      await expect(result.current.deleteSnapshot('klondike', 'old')).rejects.toThrow('Storage unavailable');
+    });
+
+    expect(adapter.setItem).not.toHaveBeenCalled();
+    expect(result.current.hydrated).toBe(false);
   });
 
   it('discards invalid save and snapshot containers', async () => {

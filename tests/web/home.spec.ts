@@ -23,6 +23,73 @@ test('new game and continue flows preserve progress', async ({ page }) => {
   await expect.poll(() => savedKlondike(page)).toEqual(before);
 });
 
+test('reload and game navigation preserve deal, history, and Restart origin', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New Klondike', exact: true }).click();
+  await expect(page).toHaveURL(/\/game\/klondike\?mode=resume$/);
+  const initial = await savedKlondike(page);
+  await page.getByRole('button', { name: 'Draw', exact: true }).click();
+  await expect.poll(async () => (await savedKlondike(page))?.waste.length).toBe(3);
+  const progressed = await savedKlondike(page);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
+  expect(await savedKlondike(page)).toEqual(progressed);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect.poll(() => savedKlondike(page)).toEqual(initial);
+  await page.reload();
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect.poll(() => savedKlondike(page)).toEqual(progressed);
+
+  await page.getByRole('button', { name: 'Games ▾', exact: true }).click();
+  await page.getByRole('button', { name: 'FreeCell', exact: true }).click();
+  await expect(page).toHaveURL(/\/game\/freecell\?mode=resume$/);
+  await page.getByRole('button', { name: 'Games ▾', exact: true }).click();
+  await page.getByRole('button', { name: 'Klondike', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible();
+  expect(await savedKlondike(page)).toEqual(progressed);
+
+  await page.getByRole('button', { name: 'Games ▾', exact: true }).click();
+  await page.getByRole('button', { name: '< home', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue Last Game', exact: true }).click();
+  await page.getByRole('button', { name: 'Draw', exact: true }).click();
+  await expect.poll(async () => (await savedKlondike(page))?.waste.length).toBe(6);
+  const latest = await savedKlondike(page);
+  await page.goBack();
+  await page.goBack();
+  await expect(page.getByText("Mum's Cards")).toBeVisible();
+  expect(await savedKlondike(page)).toEqual(latest);
+  await page.goForward();
+  await page.getByRole('button', { name: 'Continue Last Game', exact: true }).click();
+  await page.getByRole('button', { name: 'Restart', exact: true }).click();
+  await expect.poll(() => savedKlondike(page)).toEqual(initial);
+});
+
+test('failed storage read blocks game writes until retry recovers saves', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New Klondike', exact: true }).click();
+  await expect(page).toHaveURL(/mode=resume$/);
+  await page.getByRole('button', { name: 'Draw', exact: true }).click();
+  await expect.poll(async () => (await savedKlondike(page))?.waste.length).toBe(3);
+  const before = await savedKlondike(page);
+  await page.addInitScript(() => {
+    const original = Storage.prototype.getItem;
+    let unavailable = true;
+    window.addEventListener('storage-ready', () => { unavailable = false; });
+    Storage.prototype.getItem = function(key: string) {
+      if (key === 'mumscards.saves' && unavailable) throw new Error('Storage unavailable');
+      return original.call(this, key);
+    };
+  });
+  await page.goto('/game/freecell?mode=new');
+  await expect(page.getByRole('alert')).toContainText('Saved games could not be read');
+  await expect(page.getByRole('button', { name: 'New', exact: true })).toHaveCount(0);
+  await page.evaluate(() => window.dispatchEvent(new Event('storage-ready')));
+  expect(await savedKlondike(page)).toEqual(before);
+  await page.getByRole('button', { name: 'Retry storage', exact: true }).click();
+  await expect(page).toHaveURL(/\/game\/freecell\?mode=resume$/);
+  expect(await savedKlondike(page)).toEqual(before);
+});
+
 test('settings preserve deal and hidden shortcuts leave it untouched', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'New Klondike', exact: true }).click();

@@ -7,7 +7,7 @@ import type { GameVariant } from '../state/types';
 import { palette, radius, spacing, typography } from '../theme';
 
 export function HomeScreen() {
-  const { hydrated, saves } = useAppModel();
+  const { hydrated, hydrationError, retryHydration, saves } = useAppModel();
   const lastSavedGame = hydrated
     ? (
       Object.entries(saves) as Array<[GameVariant, (typeof saves)[GameVariant]]>
@@ -37,6 +37,18 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.menu}>
+          {hydrationError ? (
+            <>
+              <Text accessibilityRole="alert" style={styles.subtitle}>{hydrationError}</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void retryHydration()}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>Retry storage</Text>
+              </Pressable>
+            </>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push('/game/klondike?mode=new')}

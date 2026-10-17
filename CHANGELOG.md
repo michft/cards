@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- Replace New game URLs with resumable URLs after saving; Games menus resume progress and home exits replace the game screen.
+- Preserve original deals and up to 50 Undo/Redo positions across Resume and Snapshot Load. Legacy saves restart from their saved position.
+- Block writes after storage read failures and offer Retry instead of overwriting unread saves.
+- Count auxiliary empty columns in FreeCell multi-card move limits, excluding an empty destination.
+- Skip reversible Klondike hint shuffles and redundant FreeCell column relocations; prioritize FreeCell foundation hints.
+- Switch FreeCell and Spider selection when tapping another movable source; reject immovable FreeCell sources.
+- Clear selection during Offload, remove Klondike's plain N shortcut, and preserve Redo after an empty Draw.
 - Keep drag responders mounted until card movement finishes.
 - Allow Clock chains to start from an unreturned stock King.
 - Preserve active deals when default settings change; retain Klondike/FreeCell rules with saves and snapshots.

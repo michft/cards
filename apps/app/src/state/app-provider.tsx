@@ -86,12 +86,14 @@ function normalizeSnapshots(value: unknown): SavedSnapshots {
 
 type AppSnapshot = {
   hydrated: boolean;
+  hydrationError: string | null;
   settings: AppSettings;
   saves: SavedGames;
   snapshots: SavedSnapshots;
 };
 
 type AppModelValue = AppSnapshot & {
+  retryHydration(): Promise<void>;
   updateSettings(patch: Partial<AppSettings>): Promise<void>;
   saveGame<Variant extends GameVariant>(
     variant: Variant,
@@ -108,6 +110,7 @@ type AppModelValue = AppSnapshot & {
 
 let snapshot: AppSnapshot = {
   hydrated: false,
+  hydrationError: null,
   settings: defaultSettings,
   saves: defaultSavedGames,
   snapshots: defaultSavedSnapshots,
@@ -140,16 +143,24 @@ async function ensureHydrated() {
 
       setSnapshot({
         hydrated: true,
+        hydrationError: null,
         settings: normalizeSettings(loadedSettings),
         saves: normalizeSaves(loadedSaves),
         snapshots: normalizeSnapshots(loadedSnapshots),
       });
-    })().finally(() => {
+    })().catch((error: unknown) => {
+      setSnapshot({ ...snapshot, hydrationError: 'Saved games could not be read. Retry before playing.' });
+      throw error;
+    }).finally(() => {
       hydratePromise = null;
     });
   }
 
   await hydratePromise;
+}
+
+async function retryHydration() {
+  await ensureHydrated().catch(() => {});
 }
 
 function subscribe(listener: () => void) {
@@ -260,11 +271,12 @@ export function useAppModel(): AppModelValue {
   const current = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {
-    void ensureHydrated();
+    void retryHydration();
   }, []);
 
   return {
     ...current,
+    retryHydration,
     updateSettings,
     saveGame,
     saveSnapshot,
