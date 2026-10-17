@@ -518,14 +518,12 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
       return;
     }
 
-    const destination =
-      currentDrag.activeDestination ??
-      findDestinationAtPoint(
-        zoneMeasurements,
-        currentDrag.legalDestinations,
-        payload.pageX,
-        payload.pageY,
-      );
+    const destination = findDestinationAtPoint(
+      zoneMeasurements,
+      currentDrag.legalDestinations,
+      payload.pageX,
+      payload.pageY,
+    );
 
     setDragState(null);
 
@@ -586,7 +584,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     <>
       <View style={[styles.boardHeader, orientation === 'landscape' && styles.boardHeaderLandscape]}>
         <View style={styles.headerActions}>
-          <ActionButton label="New" onPress={startNewGame} shortcut="Cmd+N" />
+          <ActionButton label="New" onPress={startNewGame} shortcut="Cmd/Ctrl+Alt+N" />
           <ActionButton label="Restart" onPress={restartGame} shortcut="Cmd+R" />
           {settings.klondikeDebugTools ? (
             <ActionButton label="Save" onPress={saveCurrentState} />

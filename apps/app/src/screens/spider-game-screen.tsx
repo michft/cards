@@ -16,7 +16,6 @@ import { palette, radius, spacing, typography } from '../theme';
 
 type HistoryState = GameHistory<SpiderState>;
 
-const MAX_SPIDER_TABLEAU_MOVE = 12;
 const MAX_SPIDER_COLLAPSE_ITERATIONS = 128;
 
 type Props = {
@@ -302,7 +301,7 @@ export function SpiderGameScreen({ mode }: Props) {
           <View style={styles.switchRow}>
             <ShortcutPressable
               onPress={startNewGame}
-              shortcut="Cmd+N"
+              shortcut="Cmd/Ctrl+Alt+N"
               style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
             >
               <Text style={styles.switchButtonText}>New</Text>
@@ -680,16 +679,6 @@ function moveSpiderStack(
   }
 
   const moving = sourcePile.slice(sourceCardIndex);
-  const maxMovableCards = getSpiderMaxMovableCards(
-    state,
-    sourcePileIndex,
-    destinationPileIndex,
-  );
-
-  if (moving.length > maxMovableCards) {
-    return null;
-  }
-
   const lead = moving[0];
   const destinationTop = destinationPile[destinationPile.length - 1];
 
@@ -811,16 +800,6 @@ function resolveSpiderFallbackCardIndex(
   }
 
   return selectedCardIndex;
-}
-
-function getSpiderMaxMovableCards(
-  state: SpiderState,
-  sourcePileIndex: number,
-  destinationPileIndex: number,
-): number {
-  const _sourcePile = state.tableau[sourcePileIndex];
-  const _destinationPile = state.tableau[destinationPileIndex];
-  return MAX_SPIDER_TABLEAU_MOVE;
 }
 
 function isCompleteSpiderRun(cards: SpiderTableauCard[]): boolean {

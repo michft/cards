@@ -301,7 +301,7 @@ export function ClockGameScreen({ mode }: Props) {
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.headerActions}>
-            <ActionButton label="New" onPress={startNewGame} shortcut="Cmd+N" />
+            <ActionButton label="New" onPress={startNewGame} shortcut="Cmd/Ctrl+Alt+N" />
             <ActionButton label="Restart" onPress={restartGame} shortcut="Cmd+R" />
             {settings.clockDebugTools ? (
               <ActionButton label="Save" onPress={saveCurrentState} />

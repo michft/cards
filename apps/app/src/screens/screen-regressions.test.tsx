@@ -69,7 +69,8 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', () => {});
   saveGame.mockReset().mockResolvedValue(undefined);
   replace.mockReset(); push.mockReset();
-  model = { hydrated: true, hydrationError: null, settings: { ...defaultSettings }, saves: { ...defaultSavedGames }, snapshots: { ...defaultSavedSnapshots },
+  model = { hydrated: true, hydrationError: null, persistenceError: null, storageConflict: false, saveRevision: 0,
+    retryPersistence: vi.fn().mockResolvedValue(undefined), reloadSavedGames: vi.fn().mockResolvedValue(undefined), settings: { ...defaultSettings }, saves: { ...defaultSavedGames }, snapshots: { ...defaultSavedSnapshots },
     retryHydration: vi.fn().mockResolvedValue(undefined), saveGame, clearGame: vi.fn().mockResolvedValue(undefined), updateSettings: vi.fn().mockResolvedValue(undefined),
     saveSnapshot: vi.fn().mockResolvedValue(undefined), deleteSnapshot: vi.fn().mockResolvedValue(undefined) };
 });
