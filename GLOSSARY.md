@@ -18,4 +18,5 @@
 - **Drag move:** Explicitly move the dragged card or run to a legal destination at release. Invalid or interrupted drags do not change the deal.
 - **Hint cycle:** Repeated Hint taps show successive suggestions for the same position, then wrap. Changing the board resets the cycle.
 - **Move explanation:** Rule-specific feedback after an attempted action is rejected; it does not change the deal or history.
+- **Repeated-tap hint:** A brief visual suggestion after tapping the same wrong spot twice within 1.5 seconds. It marks a legal source/destination without moving cards; Reduce Motion keeps the highlight steady.
 - **Failed-move log:** Latest 200 rejected attempts saved separately from game progress, with visible-board context, active rules, attempted action, and rejection reason. Exportable as JSONL for training.

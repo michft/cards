@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 import { useEffect } from 'react';
+import { AccessibilityInfo } from 'react-native';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createDeck } from '@mumscards/engine-core';
@@ -46,6 +47,8 @@ function present(): FreeCellState {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Keep the hook's conservative static highlight; animation preferences have dedicated tests.
+  vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockImplementation(() => new Promise(() => {}));
   stacks.clear();
   saveGame.mockReset().mockResolvedValue(undefined);
   vi.spyOn(failedMoves, 'recordFailedMove').mockImplementation(() => {});
@@ -181,4 +184,39 @@ it('switches source selection silently when a tapped card cannot accept the firs
   act(() => { stacks.get(ten.id)?.onFaceUpCardPress?.(0); });
   expect(present().tableau[2].map((card) => card.rank)).toEqual([10, 9]);
   expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
+});
+
+it('flashes a legal selected run and destination after repeated invalid foundation taps without changing history', () => {
+  render(<FreeCellGameScreen mode="resume" />);
+  act(() => { source().onFaceUpCardPress?.(0); });
+  const before = saveGame.mock.calls.length;
+  fireEvent.click(screen.getAllByText('A')[0]);
+  expect(screen.queryByTestId('move-hint-tableau-0')).toBeNull();
+  fireEvent.click(screen.getAllByText('A')[0]);
+  expect(screen.getByTestId('move-hint-tableau-0')).toBeTruthy();
+  expect(screen.getByTestId('move-hint-tableau-1')).toBeTruthy();
+  expect(screen.queryByTestId('move-hint-foundation-0')).toBeNull();
+  expect(present().tableau[0].map((card) => card.rank)).toEqual([7, 6]);
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(screen.getByRole('button', { name: 'Undo' }).getAttribute('aria-disabled')).toBe('true');
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledTimes(2);
+});
+
+it('prefers a legal selected-source relocation when ordinary hints omit that move', () => {
+  const state = model.saves.freecell?.state;
+  if (!state) throw new Error('Missing saved FreeCell');
+  const seven = state.tableau[0][0];
+  state.tableau = [[seven], [], [], [], [], [], [], []];
+  state.freeCells = createDeck('drag').filter((card) => card.rank === 13);
+  render(<FreeCellGameScreen mode="resume" />);
+  act(() => { source().onFaceUpCardPress?.(0); });
+  const before = saveGame.mock.calls.length;
+  fireEvent.click(screen.getAllByText('A')[0]);
+  fireEvent.click(screen.getAllByText('A')[0]);
+  expect(screen.getByTestId('move-hint-tableau-0')).toBeTruthy();
+  expect(screen.getByTestId('move-hint-tableau-1')).toBeTruthy();
+  expect(saveGame.mock.calls).toHaveLength(before);
+  act(() => { source().onFaceUpCardPress?.(0); });
+  expect(screen.queryByTestId('move-hint-tableau-0')).toBeNull();
+  expect(screen.queryByRole('status')).toBeNull();
 });

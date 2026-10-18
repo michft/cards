@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react';
 import { useEffect } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { AccessibilityInfo } from 'react-native';
 import { createDeck, type PlayingCard } from '@mumscards/engine-core';
 import { createSpiderGame, type SpiderState } from '@mumscards/game-spider';
 import type { useAppModel } from '../state/app-provider';
@@ -77,6 +78,8 @@ beforeEach(() => {
   stacks.clear();
   saveGame.mockReset().mockResolvedValue(undefined);
   vi.spyOn(failedMoves, 'recordFailedMove').mockImplementation(() => {});
+  // Keep the hook's initial reduced-motion setting; pulse behavior has shared-hook coverage.
+  vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockReturnValue(new Promise<boolean>(() => {}));
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const left = this.textContent === 'spider-hearts-8' ? 100
       : this.textContent === 'spider-diamonds-7' ? 200 : 0;
@@ -187,6 +190,71 @@ it('offers no hint for a won board', () => {
   render(<SpiderGameScreen mode="resume" />);
   expect(screen.getByRole('button', { name: 'Hint' }).getAttribute('aria-disabled')).toBe('true');
   expect(screen.queryByRole('status')).toBeNull();
+});
+
+it('flashes a legal run after two rejected taps without changing the deal or history', () => {
+  const state = fixture();
+  state.tableau[0].unshift({ ...card('clubs', 10), faceUp: false });
+  setSaved(state);
+  render(<SpiderGameScreen mode="resume" />);
+  const before = saveGame.mock.calls.length;
+  const hidden = screen.getByLabelText('spider-clubs-10');
+  fireEvent.click(hidden);
+  expect(screen.queryByTestId('move-hint-tableau-0')).toBeNull();
+  fireEvent.click(hidden);
+  expect(screen.getByTestId('move-hint-tableau-0')).toBeTruthy();
+  expect(screen.getByTestId('move-hint-tableau-1')).toBeTruthy();
+  expect(screen.queryByTestId('move-hint-tableau-2')).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain('Move the run starting with 7 of spades');
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledTimes(2);
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(present()).toEqual(state);
+  expect(screen.getByRole('button', { name: 'Undo' }).getAttribute('aria-disabled')).toBe('true');
+});
+
+it('prefers a legal move for the selected run over the first global hint', () => {
+  const state = fixture();
+  state.tableau[3] = [card('clubs', 4)];
+  state.tableau[4] = [card('hearts', 5)];
+  setSaved(state);
+  render(<SpiderGameScreen mode="resume" />);
+  const before = saveGame.mock.calls.length;
+  fireEvent.click(screen.getByLabelText('spider-clubs-4'));
+  const destination = stacks.get('spider-clubs-13-2');
+  if (!destination?.onCardPress) throw new Error('Missing explicit invalid destination');
+  act(() => { destination.onCardPress?.(); });
+  act(() => { destination.onCardPress?.(); });
+  expect(screen.getByTestId('move-hint-tableau-3')).toBeTruthy();
+  expect(screen.getByTestId('move-hint-tableau-4')).toBeTruthy();
+  expect(screen.queryByTestId('move-hint-tableau-0')).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain('4 of clubs from column 4 to column 5');
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(present()).toEqual(state);
+});
+
+it('flashes a legal stock deal when no tableau hint exists', () => {
+  const state = fixture();
+  state.stock = createDeck('stock').slice(0, 10);
+  state.tableau = Array.from({ length: 10 }, (_, index) => [card('clubs', 13, `-${index}`)]);
+  state.tableau[0].unshift({ ...card('hearts', 2), faceUp: false });
+  setSaved(state);
+  render(<SpiderGameScreen mode="resume" />);
+  fireEvent.click(screen.getByLabelText('spider-hearts-2'));
+  fireEvent.click(screen.getByLabelText('spider-hearts-2'));
+  expect(screen.getByTestId('move-hint-stock')).toBeTruthy();
+  expect(screen.getByRole('status').textContent).toContain('Deal a row from the stock.');
+  expect(present()).toEqual(state);
+});
+
+it('keeps repeated failed taps unhighlighted when no legal hint exists', () => {
+  const state = fixture();
+  state.tableau[0][1] = card('hearts', 6);
+  state.tableau[0][0].faceUp = false;
+  setSaved(state);
+  render(<SpiderGameScreen mode="resume" />);
+  fireEvent.click(screen.getByLabelText('spider-spades-7'));
+  fireEvent.click(screen.getByLabelText('spider-spades-7'));
+  expect(screen.queryAllByTestId(/^move-hint-/)).toHaveLength(0);
 });
 
 it.each([110, 210, 900])('drops exactly the dragged run at final release %s without destination-aware fallback', (releaseX) => {

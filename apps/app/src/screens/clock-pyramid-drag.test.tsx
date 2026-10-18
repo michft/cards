@@ -1,10 +1,11 @@
 import type { ComponentProps } from 'react';
 import { useEffect } from 'react';
+import { AccessibilityInfo } from 'react-native';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createDeck, type PlayingCard } from '@mumscards/engine-core';
-import { createClockGame, type ClockState } from '@mumscards/game-clock';
-import { createPyramidGame, type PyramidState } from '@mumscards/game-pyramid';
+import { createClockGame, drawClockStock, placeClockActiveCard, type ClockState } from '@mumscards/game-clock';
+import { createPyramidGame, removePyramidCards, type PyramidState } from '@mumscards/game-pyramid';
 
 import type { useAppModel } from '../state/app-provider';
 import { recordFailedMove } from '../state/failed-moves';
@@ -100,6 +101,8 @@ function pyramid(): PyramidState {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Keep the hook's conservative default; the shared tests cover the async setting.
+  vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockReturnValue(new Promise<boolean>(() => {}));
   stacks.clear();
   emptyStockPress = undefined;
   vi.mocked(recordFailedMove).mockClear();
@@ -341,4 +344,124 @@ it('explains the Pyramid recycle limit without creating an undo step', () => {
   expect(recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
     rejection: expect.objectContaining({ code: 'recycle-limit' }),
   }));
+});
+
+it('flashes the Clock active source and matching hour only after a repeated wrong-hour tap', () => {
+  const state = clock(5);
+  resume(state);
+  const before = saveGame.mock.calls.length;
+  const wrong = screen.getByRole('button', { name: '8 hour' });
+  fireEvent.click(wrong);
+  expect(screen.queryByTestId('move-hint-hour-5')).toBeNull();
+  fireEvent.click(wrong);
+  expect(screen.getByTestId('move-hint-hour-1')).toBeTruthy();
+  expect(screen.getByTestId('move-hint-hour-5')).toBeTruthy();
+  expect(placeClockActiveCard(state)).not.toBe(state);
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(recordFailedMove).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole('button', { name: '5 hour' }));
+  expect(screen.queryByTestId('move-hint-hour-5')).toBeNull();
+  expect(saveGame.mock.calls.at(-1)?.[1].history?.past).toHaveLength(1);
+});
+
+it('flashes a repeated Clock King error toward the original stock rather than an hour', () => {
+  resume(clock(13));
+  const before = saveGame.mock.calls.length;
+  const wrong = screen.getByRole('button', { name: '8 hour' });
+  fireEvent.click(wrong);
+  fireEvent.click(wrong);
+  expect(screen.getByTestId('move-hint-hour-1')).toBeTruthy();
+  expect(screen.getByTestId('move-hint-stock-2')).toBeTruthy();
+  expect(screen.queryByTestId('move-hint-hour-8')).toBeNull();
+  expect(saveGame.mock.calls).toHaveLength(before);
+});
+
+it('flashes only an unfinished available Clock stock when a draw is needed', () => {
+  const state = clock(5);
+  state.activeCard = null;
+  state.activeSource = null;
+  state.activeStockPileIndex = null;
+  state.stockPiles = [[card(13)], [], [card(9)], []];
+  state.completedStockPiles = [0];
+  resume(state);
+  const before = saveGame.mock.calls.length;
+  const wrong = screen.getByRole('button', { name: '8 hour' });
+  fireEvent.click(wrong);
+  fireEvent.click(wrong);
+  expect(screen.getByTestId('move-hint-stock-2')).toBeTruthy();
+  expect(screen.queryByTestId('move-hint-stock-0')).toBeNull();
+  expect(drawClockStock(state, 2)).not.toBe(state);
+  expect(saveGame.mock.calls).toHaveLength(before);
+});
+
+it('flashes a legal Pyramid half-covered parent and child after repeated covered-card taps', () => {
+  const state = pyramid();
+  state.tableau[6][0] = null;
+  state.tableau[5][0] = card(7);
+  state.tableau[4][0] = card(8);
+  resume(state);
+  const before = saveGame.mock.calls.length;
+  act(() => { source(8).onCardPress?.(); });
+  expect(screen.queryByTestId('move-hint-tableau-5-0')).toBeNull();
+  act(() => { source(8).onCardPress?.(); });
+  expect(screen.getByTestId('move-hint-tableau-5-0')).toBeTruthy();
+  expect(screen.getByTestId('move-hint-tableau-6-1')).toBeTruthy();
+  expect(removePyramidCards(state, [
+    { zone: 'tableau', rowIndex: 5, cardIndex: 0 },
+    { zone: 'tableau', rowIndex: 6, cardIndex: 1 },
+  ])).not.toBe(state);
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(source(8).selected).toBe(false);
+});
+
+it('flashes a legal Pyramid pair when the invalid partner is tapped again while preserving deselection', () => {
+  const state = pyramid();
+  resume(state);
+  const before = saveGame.mock.calls.length;
+  act(() => { source(7).onCardPress?.(); });
+  act(() => { source(9).onCardPress?.(); });
+  expect(source(9).selected).toBe(true);
+  expect(screen.queryByTestId('move-hint-tableau-6-0')).toBeNull();
+  act(() => { source(9).onCardPress?.(); });
+  expect(source(9).selected).toBe(false);
+  expect(screen.getByTestId('move-hint-tableau-6-0')).toBeTruthy();
+  expect(screen.getByTestId('move-hint-tableau-6-1')).toBeTruthy();
+  expect(removePyramidCards(state, [
+    { zone: 'tableau', rowIndex: 6, cardIndex: 0 },
+    { zone: 'tableau', rowIndex: 6, cardIndex: 1 },
+  ])).not.toBe(state);
+  expect(recordFailedMove).toHaveBeenCalledTimes(1);
+  expect(saveGame.mock.calls).toHaveLength(before);
+});
+
+it.each(['draw', 'recycle'] as const)('flashes the Pyramid stock for a legal %s when no pair is available', (action) => {
+  const state = pyramid();
+  state.tableau[6][0] = card(2);
+  state.tableau[6][1] = card(3);
+  state.tableau[6][2] = card(4);
+  state.tableau[5][0] = card(8);
+  if (action === 'recycle') {
+    state.stock = [];
+    state.waste = [card(8, 'hearts')];
+  }
+  resume(state);
+  const before = saveGame.mock.calls.length;
+  act(() => { source(8).onCardPress?.(); });
+  act(() => { source(8).onCardPress?.(); });
+  expect(screen.getByTestId('move-hint-stock')).toBeTruthy();
+  expect(saveGame.mock.calls).toHaveLength(before);
+});
+
+it.each(['clock', 'pyramid'] as const)('does not invent a move after %s has ended', (game) => {
+  const state = game === 'clock' ? { ...clock(5), lost: true } : { ...pyramid(), won: true };
+  resume(state);
+  if (game === 'clock') {
+    const wrong = screen.getByRole('button', { name: '8 hour' });
+    fireEvent.click(wrong);
+    fireEvent.click(wrong);
+  } else {
+    act(() => { source(7).onCardPress?.(); });
+    act(() => { source(7).onCardPress?.(); });
+  }
+  expect(screen.queryAllByTestId(/^move-hint-/)).toHaveLength(0);
 });

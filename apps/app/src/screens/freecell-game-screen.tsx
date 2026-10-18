@@ -20,7 +20,7 @@ import { CardStack } from './shared/card-stack';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 import { useCardDrag } from './shared/use-card-drag';
-import { MoveFeedback, useMoveFeedback } from './shared/use-move-feedback';
+import { MoveFeedback, MoveHintOverlay, useMoveFeedback } from './shared/use-move-feedback';
 import { getFreeCellRejection } from './shared/move-rejection-reasons';
 
 type HistoryState = GameHistory<FreeCellState>;
@@ -48,9 +48,20 @@ export function FreeCellGameScreen({ mode }: Props) {
       : createHistoryState(createFreeCellGame(Math.random, { tableauBuildPolicy: settings.freeCellTableauBuildPolicy })),
   );
   const tableauBuildPolicy = history.present.tableauBuildPolicy ?? 'alternate-red-black';
-  const feedback = useMoveFeedback('freecell', history.present);
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<FreeCellSource | null>(null);
+  const feedback = useMoveFeedback('freecell', history.present, (attempt) => {
+    const hints = getFreeCellHints(history.present, tableauBuildPolicy);
+    const source = attempt.source ?? selectedSource;
+    const legalMoves = getFreeCellHints(history.present, tableauBuildPolicy, true);
+    const sameSource = (item: (typeof hints)[number]) => JSON.stringify(item.source) === JSON.stringify(source);
+    const hint = hints.find(sameSource) ?? legalMoves.find(sameSource) ?? hints[0] ?? legalMoves[0];
+    if (!hint) return null;
+    return {
+      label: hint.label,
+      targets: [freeCellHintTarget(hint.source), freeCellHintTarget(hint.destination)],
+    };
+  });
   const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const [offloadActive, setOffloadActive] = useState(false);
@@ -84,6 +95,7 @@ export function FreeCellGameScreen({ mode }: Props) {
       }
     },
     onStart: (source) => {
+      feedback.clear();
       setOffloadActive(false);
       setSelectedSource(source);
       setExpandedTableauPile(null);
@@ -246,6 +258,7 @@ export function FreeCellGameScreen({ mode }: Props) {
 
   function handleSourcePress(source: FreeCellSource) {
     if (selectedSource && JSON.stringify(selectedSource) === JSON.stringify(source)) {
+      feedback.clear();
       setSelectedSource(null);
       return;
     }
@@ -258,6 +271,7 @@ export function FreeCellGameScreen({ mode }: Props) {
       return;
     }
 
+    feedback.clear();
     setSelectedSource(source);
   }
 
@@ -274,6 +288,7 @@ export function FreeCellGameScreen({ mode }: Props) {
         destination.zone === 'cell' &&
         selectedSource.cellIndex === destination.cellIndex)
     ) {
+      feedback.clear();
       setSelectedSource(null);
       return false;
     }
@@ -309,6 +324,7 @@ export function FreeCellGameScreen({ mode }: Props) {
   }
 
   function showHint() {
+    feedback.clear();
     const hints = getFreeCellHints(history.present, tableauBuildPolicy);
 
     if (hints.length === 0) {
@@ -442,7 +458,6 @@ export function FreeCellGameScreen({ mode }: Props) {
             </Pressable>
           </View>
 
-          <MoveFeedback feedback={feedback} />
           {hintText ? <Text style={styles.hintText}>{hintText}</Text> : null}
 
           {settings.freeCellDebugTools && snapshotPickerOpen ? (
@@ -493,6 +508,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                     onLayout={cardDrag.measureTargets}
                     style={dropStyle({ zone: 'cell', cellIndex })}
                   >
+                    <MoveHintOverlay feedback={feedback} target={`cell-${cellIndex}`} />
                     <CardStack
                       cardWidth={cardWidth}
                       cards={card ? [{ ...card, faceUp: true }] : []}
@@ -523,6 +539,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                     onLayout={cardDrag.measureTargets}
                     style={dropStyle({ zone: 'foundation', pileIndex })}
                   >
+                    <MoveHintOverlay feedback={feedback} target={`foundation-${pileIndex}`} />
                     <CardStack
                       cardWidth={cardWidth}
                       cards={pile.slice(-1).map((card) => ({ ...card, faceUp: true }))}
@@ -545,6 +562,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                     onLayout={cardDrag.measureTargets}
                     style={dropStyle({ zone: 'tableau', pileIndex })}
                   >
+                    <MoveHintOverlay feedback={feedback} target={`tableau-${pileIndex}`} />
                     <CardStack
                       cardWidth={cardWidth}
                       cards={pile.map((card) => ({ ...card, faceUp: true }))}
@@ -585,6 +603,7 @@ export function FreeCellGameScreen({ mode }: Props) {
             </View>
           </ScrollView>
         </ScrollView>
+        <MoveFeedback feedback={feedback} />
         {cardDrag.drag ? (
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <View style={[styles.dragGhost, {
@@ -641,6 +660,10 @@ function getNextFreeCellFoundationMove(
   return null;
 }
 
+function freeCellHintTarget(location: FreeCellSource | FreeCellDestination): string {
+  return location.zone === 'cell' ? `cell-${location.cellIndex}` : `${location.zone}-${location.pileIndex}`;
+}
+
 function canMoveFreeCellSource(
   state: FreeCellState,
   source: FreeCellSource,
@@ -669,6 +692,7 @@ function getFreeCellDestinations(
 function getFreeCellHints(
   state: FreeCellState,
   policy: 'any' | 'red-black' | 'alternate-red-black' | 'suit-matching',
+  includeRelocations = false,
 ): Array<{ label: string; source: FreeCellSource; destination: FreeCellDestination }> {
   const hints: Array<{ label: string; source: FreeCellSource; destination: FreeCellDestination }> = [];
   const seen = new Set<string>();
@@ -678,7 +702,7 @@ function getFreeCellHints(
 
     for (let cardIndex = 0; cardIndex < pile.length; cardIndex += 1) {
       const source: FreeCellSource = { zone: 'tableau', pileIndex, cardIndex };
-      collectHintsForSource(state, source, policy, hints, seen);
+      collectHintsForSource(state, source, policy, hints, seen, includeRelocations);
     }
   }
 
@@ -688,7 +712,7 @@ function getFreeCellHints(
     }
 
     const source: FreeCellSource = { zone: 'cell', cellIndex };
-    collectHintsForSource(state, source, policy, hints, seen);
+    collectHintsForSource(state, source, policy, hints, seen, includeRelocations);
   }
 
   return hints.sort((left, right) => {
@@ -720,20 +744,21 @@ function collectHintsForSource(
   policy: 'any' | 'red-black' | 'alternate-red-black' | 'suit-matching',
   hints: Array<{ label: string; source: FreeCellSource; destination: FreeCellDestination }>,
   seen: Set<string>,
+  includeRelocations: boolean,
 ) {
   for (let pileIndex = 0; pileIndex < state.tableau.length; pileIndex += 1) {
     const destination: FreeCellDestination = { zone: 'tableau', pileIndex };
-    maybeAddHint(state, source, destination, policy, hints, seen);
+    maybeAddHint(state, source, destination, policy, hints, seen, includeRelocations);
   }
 
   for (let cellIndex = 0; cellIndex < state.freeCells.length; cellIndex += 1) {
     const destination: FreeCellDestination = { zone: 'cell', cellIndex };
-    maybeAddHint(state, source, destination, policy, hints, seen);
+    maybeAddHint(state, source, destination, policy, hints, seen, includeRelocations);
   }
 
   for (let pileIndex = 0; pileIndex < state.foundations.length; pileIndex += 1) {
     const destination: FreeCellDestination = { zone: 'foundation', pileIndex };
-    maybeAddHint(state, source, destination, policy, hints, seen);
+    maybeAddHint(state, source, destination, policy, hints, seen, includeRelocations);
   }
 }
 
@@ -744,6 +769,7 @@ function maybeAddHint(
   policy: 'any' | 'red-black' | 'alternate-red-black' | 'suit-matching',
   hints: Array<{ label: string; source: FreeCellSource; destination: FreeCellDestination }>,
   seen: Set<string>,
+  includeRelocations: boolean,
 ) {
   if (
     (source.zone === 'tableau' &&
@@ -754,7 +780,7 @@ function maybeAddHint(
     return;
   }
 
-  if (source.zone === 'tableau' && source.cardIndex === 0 &&
+  if (!includeRelocations && source.zone === 'tableau' && source.cardIndex === 0 &&
       destination.zone === 'tableau' && state.tableau[destination.pileIndex].length === 0) {
     return;
   }

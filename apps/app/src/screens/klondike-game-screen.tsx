@@ -35,7 +35,7 @@ import { createGameHistory as createHistoryState, persistGameHistory, restoreGam
 import { CardStack, type DragPayload as DragGesturePayload } from './shared/card-stack';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { isEditableTarget, useWebGameShortcuts } from './shared/use-web-game-shortcuts';
-import { MoveFeedback, useMoveFeedback } from './shared/use-move-feedback';
+import { MoveFeedback, MoveHintOverlay, useMoveFeedback } from './shared/use-move-feedback';
 import { getKlondikeRejection } from './shared/move-rejection-reasons';
 
 type HistoryState = GameHistory<KlondikeState>;
@@ -81,8 +81,25 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     mode === 'resume' && savedGame ? restoreGameHistory(savedGame) : createHistoryState(createNewGame()),
   );
   const emptyTableauPolicy = history.present.emptyTableauPolicy ?? 'any';
-  const feedback = useMoveFeedback('klondike', history.present);
   const [selectedSource, setSelectedSource] = useState<KlondikeSource | null>(null);
+  const feedback = useMoveFeedback('klondike', history.present, (attempt) => {
+    const rules = { emptyTableauPolicy };
+    const hints = getHints(history.present, settings.hintMode, rules);
+    const source = attempt.source ?? selectedSource;
+    const sameSource = (move: KlondikeMove) => move.kind === 'move' && JSON.stringify(move.source) === JSON.stringify(source);
+    const preferred = hints.find((hint) => sameSource(hint.move));
+    const legalMoves = getLegalMoves(history.present, rules);
+    const move = preferred?.move ?? legalMoves.find(sameSource) ?? hints[0]?.move ?? legalMoves[0];
+    if (!move) return null;
+    if (move.kind !== 'move') {
+      return { label: move.kind === 'draw' ? 'Draw cards from stock' : 'Recycle waste back into stock', targets: ['stock'] };
+    }
+    return {
+      label: preferred?.label ?? hints.find((hint) => JSON.stringify(hint.move) === JSON.stringify(move))?.label
+        ?? `Move ${klondikeHintLocation(move.source)} to ${klondikeHintLocation(move.destination)}`,
+      targets: [klondikeHintTarget(move.source), klondikeHintTarget(move.destination)],
+    };
+  });
   const [selectedAtMs, setSelectedAtMs] = useState<number | null>(null);
   const [hintText, setHintText] = useState<string | null>(null);
   const [hintCycleIndex, setHintCycleIndex] = useState(0);
@@ -377,6 +394,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   }
 
   function showHint() {
+    feedback.clear();
     const hints = getHints(history.present, settings.hintMode, {
       emptyTableauPolicy,
     });
@@ -423,11 +441,13 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 
     if (selectedSource) {
       if (JSON.stringify(selectedSource) === JSON.stringify(source)) {
+        feedback.clear();
         setSelectedSource(null);
         setSelectedAtMs(null);
         return;
       }
 
+      feedback.clear();
       setSelectedSource(source);
       setSelectedAtMs(Date.now());
       return;
@@ -439,6 +459,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
       return;
     }
 
+    feedback.clear();
     setSelectedSource(source);
     setSelectedAtMs(Date.now());
   }
@@ -456,6 +477,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
       const elapsed = selectedAtMs === null ? 0 : Date.now() - selectedAtMs;
 
       if (elapsed >= 500) {
+        feedback.clear();
         setSelectedSource(null);
         setSelectedAtMs(null);
       }
@@ -482,6 +504,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
       return;
     }
 
+    feedback.clear();
     setSelectedSource(source);
     setSelectedAtMs(Date.now());
     setHintText(null);
@@ -688,7 +711,6 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
         </View>
       ) : null}
 
-      <MoveFeedback feedback={feedback} />
       {hintText ? <Text style={styles.hintText}>{hintText}</Text> : null}
       {history.present.completed ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
 
@@ -704,6 +726,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
             onPress={draw}
             width={cardWidth}
           >
+            <MoveHintOverlay feedback={feedback} target="stock" />
             <CardStack
               cardWidth={cardWidth}
               cards={history.present.stock.slice(-1)}
@@ -714,6 +737,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
           </Zone>
 
           <Zone width={wasteZoneWidth}>
+            <MoveHintOverlay feedback={feedback} target="waste" />
             <CardStack
               cardWidth={cardWidth}
               cards={history.present.waste.slice(-3).map((card) => ({ ...card, faceUp: true }))}
@@ -758,6 +782,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
               registerZone={registerZone}
               width={cardWidth}
             >
+              <MoveHintOverlay feedback={feedback} target={`foundation-${pileIndex}`} />
               <CardStack
                 cardWidth={cardWidth}
                 cards={pile.slice(-1).map((card) => ({ ...card, faceUp: true }))}
@@ -810,6 +835,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
               registerZone={registerZone}
               width={cardWidth}
             >
+              <MoveHintOverlay feedback={feedback} target={`tableau-${pileIndex}`} />
               <CardStack
                 cardWidth={cardWidth}
                 cards={pile}
@@ -929,6 +955,8 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
         <ScrollView contentContainerStyle={styles.scrollContent} nestedScrollEnabled>
           {content}
         </ScrollView>
+
+        <MoveFeedback feedback={feedback} />
 
         {dragState ? (
           <View pointerEvents="none" style={styles.dragOverlay}>
@@ -1117,6 +1145,14 @@ function ActionButton({
       <Text style={styles.actionButtonText}>{label}</Text>
     </ShortcutPressable>
   );
+}
+
+function klondikeHintTarget(location: KlondikeSource | KlondikeDestination): string {
+  return location.zone === 'waste' ? 'waste' : `${location.zone}-${location.pileIndex}`;
+}
+
+function klondikeHintLocation(location: KlondikeSource | KlondikeDestination): string {
+  return location.zone === 'waste' ? 'waste' : `${location.zone} ${location.pileIndex + 1}`;
 }
 
 function Zone({

@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppModel } from '../state/app-provider';
 import { CardStack } from './shared/card-stack';
 import { useCardDrag } from './shared/use-card-drag';
-import { MoveFeedback, useMoveFeedback } from './shared/use-move-feedback';
+import { MoveFeedback, MoveHintOverlay, useMoveFeedback, type FailedMoveAttempt, type MoveSuggestion } from './shared/use-move-feedback';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
@@ -35,7 +35,6 @@ export function SpiderGameScreen({ mode }: Props) {
     mode === 'resume' && savedGame ? restoreGameHistory(savedGame)
       : createHistoryState(createSpiderGame(Math.random, { suitMode: settings.spiderSuitMode })),
   );
-  const feedback = useMoveFeedback('spider', history.present);
   const [selectedSource, setSelectedSource] = useState<{
     pileIndex: number;
     cardIndex: number;
@@ -50,7 +49,10 @@ export function SpiderGameScreen({ mode }: Props) {
   const boardMinWidth = cardWidth * 10 + rowGap * 9;
   const suitModeLabel = getSpiderSuitModeLabel(history.present.suitMode);
   const won = history.present.completedRuns >= 8;
-  const hints = useMemo(() => getSpiderHints(history.present), [history.present]);
+  const suggestions = useMemo(() => getSpiderSuggestions(history.present), [history.present]);
+  const hints = suggestions.map((suggestion) => suggestion.label);
+  const feedback = useMoveFeedback('spider', history.present, (attempt) =>
+    suggestSpiderMove(suggestions, attempt, selectedSource));
   const hintIndex = hintCursor?.state === history.present ? hintCursor.index : null;
   const cardDrag = useCardDrag<SpiderSource, number>({
     getCards: ({ pileIndex, cardIndex }) => {
@@ -463,7 +465,6 @@ export function SpiderGameScreen({ mode }: Props) {
             Spider ({suitModeLabel})
           </Text>
           {won ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
-          <MoveFeedback feedback={feedback} />
           {hintIndex !== null ? (
             <Text accessibilityLiveRegion="polite" role="status" style={styles.hintText}>
               {hints.length > 0
@@ -506,13 +507,16 @@ export function SpiderGameScreen({ mode }: Props) {
           <ScrollView horizontal contentContainerStyle={styles.horizontalBoardContent} showsHorizontalScrollIndicator={false} scrollEnabled={!cardDrag.drag} onScroll={cardDrag.measureTargets} scrollEventThrottle={16}>
             <View testID="game-board" style={[styles.board, { minWidth: boardMinWidth }]}>
               <View style={styles.stockRow}>
-                <CardStack
-                  cardWidth={cardWidth}
-                  cards={history.present.stock.slice(-1)}
-                  onCardPress={dealSpiderStock}
-                  placeholderLabel={`${history.present.stock.length}`}
-                  variant="back"
-                />
+                <View>
+                  <CardStack
+                    cardWidth={cardWidth}
+                    cards={history.present.stock.slice(-1)}
+                    onCardPress={dealSpiderStock}
+                    placeholderLabel={`${history.present.stock.length}`}
+                    variant="back"
+                  />
+                  <MoveHintOverlay feedback={feedback} target="stock" />
+                </View>
                 <View style={styles.stockMeta}>
                   <Text style={styles.copy}>Stock: {history.present.stock.length}</Text>
                   <Text style={styles.copy}>Runs complete: {history.present.completedRuns}</Text>
@@ -573,12 +577,14 @@ export function SpiderGameScreen({ mode }: Props) {
                       placeholderLabel=""
                       selected={selectedSource?.pileIndex === pileIndex}
                     />
+                    <MoveHintOverlay feedback={feedback} target={`tableau-${pileIndex}`} />
                   </View>
                 ))}
               </View>
             </View>
           </ScrollView>
         </ScrollView>
+        <MoveFeedback feedback={feedback} />
         {cardDrag.drag ? (
           <View pointerEvents="none" style={styles.dragOverlay}>
             <View style={[styles.dragGhost, {
@@ -793,9 +799,22 @@ function canMoveSpiderStack(pile: SpiderTableauCard[], cardIndex: number): boole
   return true;
 }
 
-function getSpiderHints(state: SpiderState): string[] {
+type SpiderSuggestion = MoveSuggestion & { source?: SpiderSource };
+
+function suggestSpiderMove(suggestions: SpiderSuggestion[], attempt: FailedMoveAttempt, selectedSource: SpiderSource | null): MoveSuggestion | null {
+  const source = attempt.source && 'pileIndex' in attempt.source ? attempt.source : selectedSource;
+  if (source) {
+    const matching = suggestions.find((suggestion) => suggestion.source && suggestion.source.pileIndex === source.pileIndex
+      && 'cardIndex' in source && suggestion.source.cardIndex === source.cardIndex)
+      ?? suggestions.find((suggestion) => suggestion.source?.pileIndex === source.pileIndex);
+    if (matching) return matching;
+  }
+  return suggestions[0] ?? null;
+}
+
+function getSpiderSuggestions(state: SpiderState): SpiderSuggestion[] {
   if (state.completedRuns >= 8) return [];
-  const hints: string[] = [];
+  const hints: SpiderSuggestion[] = [];
   state.tableau.forEach((pile, sourceIndex) => {
     pile.forEach((card, cardIndex) => {
       if (!canMoveSpiderStack(pile, cardIndex)) return;
@@ -803,12 +822,16 @@ function getSpiderHints(state: SpiderState): string[] {
         if (sourceIndex === destinationIndex || (cardIndex === 0 && destination.length === 0)) return;
         if (!canPlaceSpiderLeadOnDestination(card, destination.at(-1))) return;
         const run = pile.length - cardIndex > 1 ? 'the run starting with ' : '';
-        hints.push(`Move ${run}${rankLabel(card.rank)} of ${card.suit} from column ${sourceIndex + 1} to column ${destinationIndex + 1}.`);
+        hints.push({
+          label: `Move ${run}${rankLabel(card.rank)} of ${card.suit} from column ${sourceIndex + 1} to column ${destinationIndex + 1}.`,
+          targets: [`tableau-${sourceIndex}`, `tableau-${destinationIndex}`],
+          source: { pileIndex: sourceIndex, cardIndex },
+        });
       });
     });
   });
   if (state.stock.length >= 10 && state.tableau.every((pile) => pile.length > 0)) {
-    hints.push('Deal a row from the stock.');
+    hints.push({ label: 'Deal a row from the stock.', targets: ['stock'] });
   }
   return hints;
 }
