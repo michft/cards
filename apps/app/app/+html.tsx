@@ -13,7 +13,7 @@ export default function Html({ children }: PropsWithChildren) {
         <meta name="apple-mobile-web-app-title" content="Mum's Cards" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <link rel="manifest" href="/manifest.webmanifest" />
-        <link rel="apple-touch-icon" href="/app-icon.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
         <title>Mum&apos;s Cards</title>
         <ScrollViewStyleReset />
       </head>

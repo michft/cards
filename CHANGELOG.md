@@ -16,6 +16,7 @@
 
 ### Fixed
 
+- Replace the web Home Screen icon with opaque green card artwork, a dedicated 180px Apple touch icon, matching 192px/512px install icons, and browser favicon.
 - Temporarily hide Pyramid and Clock (Kings) from home, Games menus, and Continue selection while retaining their saves.
 - Fit every game to measured screen space in portrait and landscape, including long/expanded piles, card labels, and dragged runs; reserve room for scrollable move explanations.
 - Use warm-white text on the green table for Spider headings/counters, Clock labels, pile placeholders, loading indicators, and storage errors; adapt the native status bar to its surface.

@@ -1,6 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#1f5a44"/>
-  <rect x="180" y="106" width="208" height="304" rx="24" transform="rotate(12 284 258)" fill="#d7b56d"/>
-  <rect x="105" y="88" width="208" height="304" rx="24" transform="rotate(-10 209 240)" fill="#f6f1e7"/>
-  <path d="M218 163C200 190 153 213 153 249C153 280 188 292 211 272L201 309H235L225 272C248 292 283 280 283 249C283 213 236 190 218 163Z" fill="#122119"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="table" x2="0.8" y2="1">
+      <stop stop-color="#34765a"/>
+      <stop offset="1" stop-color="#123e31"/>
+    </linearGradient>
+    <linearGradient id="paper" x2="0.3" y2="1">
+      <stop stop-color="#fffdf6"/>
+      <stop offset="1" stop-color="#f2e6cc"/>
+    </linearGradient>
+    <linearGradient id="gold" x2="1" y2="1">
+      <stop stop-color="#edd39a"/>
+      <stop offset="1" stop-color="#bb9149"/>
+    </linearGradient>
+    <filter id="shadow" x="-40%" y="-30%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="20" stdDeviation="18" flood-color="#08281e" flood-opacity="0.4"/>
+    </filter>
+    <symbol id="ace" viewBox="0 0 48 56">
+      <path fill-rule="evenodd" d="M18 0h12l18 56H35l-4-14H17l-4 14H0Zm2 31h8l-4-16Z"/>
+    </symbol>
+    <symbol id="heart" viewBox="0 0 100 100">
+      <path d="M50 91C34 77 4 54 4 31C4 7 33 1 50 23C67 1 96 7 96 31C96 54 66 77 50 91Z"/>
+    </symbol>
+    <symbol id="spade" viewBox="0 0 100 100">
+      <path d="M50 3C35 25 5 40 5 63C5 83 27 91 42 76L35 100H65L58 76C73 91 95 83 95 63C95 40 65 25 50 3Z"/>
+    </symbol>
+  </defs>
+  <!-- Opaque, square background: the Home Screen applies its own corner mask. -->
+  <path fill="url(#table)" d="M0 0H1024V1024H0Z"/>
+  <circle cx="512" cy="512" r="430" fill="none" stroke="#c9b776" stroke-opacity="0.13" stroke-width="3"/>
+  <g filter="url(#shadow)">
+    <g transform="rotate(-2 512 540)">
+      <rect x="340" y="270" width="344" height="536" rx="38" fill="url(#gold)"/>
+      <rect x="357" y="287" width="310" height="502" rx="25" fill="none" stroke="#fff2c9" stroke-opacity="0.6" stroke-width="3"/>
+    </g>
+    <g transform="rotate(-16 362 490)">
+      <rect x="190" y="222" width="344" height="536" rx="38" fill="url(#paper)" stroke="#dfcfac" stroke-width="4"/>
+      <g fill="#17282a">
+        <use href="#ace" x="220" y="252" width="42" height="49"/>
+        <use href="#spade" x="225" y="311" width="32" height="32"/>
+        <use href="#spade" x="258" y="386" width="208" height="208"/>
+      </g>
+    </g>
+    <g transform="rotate(12 600 458)">
+      <rect x="428" y="190" width="344" height="536" rx="38" fill="url(#paper)" stroke="#dfcfac" stroke-width="4"/>
+      <g fill="#b63838">
+        <use href="#ace" x="458" y="220" width="42" height="49"/>
+        <use href="#heart" x="463" y="279" width="32" height="32"/>
+        <use href="#heart" x="496" y="354" width="208" height="208"/>
+        <g transform="translate(742 696) rotate(180)">
+          <use href="#ace" width="42" height="49"/>
+          <use href="#heart" x="5" y="59" width="32" height="32"/>
+        </g>
+      </g>
+    </g>
+  </g>
 </svg>
