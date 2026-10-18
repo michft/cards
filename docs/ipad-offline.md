@@ -19,6 +19,8 @@ Keep the app's website data. Clearing it can erase saves and the offline copy; i
 
 ## Updates
 
+The Home Screen icon uses full-background card artwork with no baked-in white corners. Its source is `apps/app/public/app-icon.svg`; committed PNGs provide 180px Apple, 192px/512px web install, and 48px favicon sizes. To regenerate a size, use `rsvg-convert -w 180 -h 180 -o apps/app/public/apple-touch-icon.png apps/app/public/app-icon.svg` (requires librsvg). Existing shortcuts have not been verified to refresh their icons automatically; keep your current shortcut and saved progress while checking a newly added one.
+
 Open the app online to download updates. Once an update is downloaded, close **all** Mum's Cards windows, then reopen. An active session keeps its existing app version. Downloads are checked against their build's SHA-256 hashes before caching; incomplete or mismatched files never count as a ready offline copy.
 
 ## Build and host

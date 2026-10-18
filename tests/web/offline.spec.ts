@@ -90,7 +90,32 @@ test('cold launches every game and saves progress with origin unreachable', asyn
   const manifest = await page.evaluate(async () => (await fetch('/manifest.webmanifest')).json());
   expect(manifest.display).toBe('standalone');
   expect(manifest.start_url).toBe('/');
-  expect(await page.locator('link[rel="apple-touch-icon"]').getAttribute('href')).toBe('/app-icon.png');
+  expect(await page.locator('link[rel="apple-touch-icon"]').getAttribute('href')).toBe('/apple-touch-icon.png');
+  expect(await page.locator('link[rel="apple-touch-icon"]').getAttribute('sizes')).toBe('180x180');
+  expect(manifest.icons).toEqual(expect.arrayContaining([
+    expect.objectContaining({ src: '/app-icon-192.png', sizes: '192x192' }),
+    expect.objectContaining({ src: '/app-icon.png', sizes: '512x512' }),
+  ]));
+  const touchIcon = await page.evaluate(async () => {
+    const icon = new Image();
+    icon.src = '/apple-touch-icon.png';
+    await icon.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = icon.naturalWidth; canvas.height = icon.naturalHeight;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(icon, 0, 0);
+    return { width: icon.naturalWidth, height: icon.naturalHeight,
+      corners: [[0, 0], [179, 0], [0, 179], [179, 179]].map(([x, y]) =>
+        Array.from(context.getImageData(x, y, 1, 1).data)),
+    };
+  });
+  expect(touchIcon.width).toBe(180);
+  expect(touchIcon.height).toBe(180);
+  for (const [red, green, blue, alpha] of touchIcon.corners) {
+    expect(alpha).toBe(255);
+    expect(green).toBeGreaterThan(red);
+    expect(green).toBeGreaterThan(blue);
+  }
   await page.close();
   await offlineServer.stop();
   // WebKit's automation offline flag breaks service-worker navigation (Playwright #42775).
