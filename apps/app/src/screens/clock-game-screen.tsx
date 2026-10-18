@@ -2,7 +2,7 @@ import type { PersistedGameEnvelope } from '@mumscards/engine-core';
 import { rankLabel } from '@mumscards/engine-core';
 import type { PlayingCard } from '@mumscards/engine-core';
 import { Ionicons } from '@expo/vector-icons';
-import { createClockGame, drawClockStock, placeClockActiveCard, type ClockState } from '@mumscards/game-clock';
+import { createClockGame, drawClockStock, normalizeClockState, placeClockActiveCard, type ClockState } from '@mumscards/game-clock';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -13,7 +13,7 @@ import { palette, radius, spacing, typography } from '../theme';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack } from './shared/card-stack';
 import { useCardDrag } from './shared/use-card-drag';
-import { MoveFeedback, useMoveFeedback } from './shared/use-move-feedback';
+import { MoveFeedback, MoveHintOverlay, useMoveFeedback, type MoveSuggestion } from './shared/use-move-feedback';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
@@ -52,7 +52,7 @@ export function ClockGameScreen({ mode }: Props) {
   );
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
-  const feedback = useMoveFeedback('clock', history.present);
+  const feedback = useMoveFeedback('clock', history.present, () => suggestClockMove(history.present));
   const availableWidth = Math.max(320, width - spacing.lg * 2);
   const compactLabels = width < 420;
   const hourLabels = compactLabels
@@ -433,7 +433,6 @@ export function ClockGameScreen({ mode }: Props) {
 
           {history.present.won ? <Text style={styles.winText}>Clock solved.</Text> : null}
           {history.present.lost ? <Text style={styles.lossText}>Clock lost.</Text> : null}
-          <MoveFeedback feedback={feedback} />
 
           <ScrollView
             scrollEnabled={!cardDrag.drag}
@@ -562,6 +561,7 @@ export function ClockGameScreen({ mode }: Props) {
                       );
                     })
                   )}
+                  <MoveHintOverlay feedback={feedback} target={`hour-${hourIndex}`} />
                 </Pressable>
               );
             })}
@@ -623,6 +623,7 @@ export function ClockGameScreen({ mode }: Props) {
                       selected={Boolean(stockActiveCard)}
                       variant={variant}
                     />
+                    <MoveHintOverlay feedback={feedback} target={`stock-${pileIndex}`} />
                   </View>
                 );
               })}
@@ -653,6 +654,7 @@ export function ClockGameScreen({ mode }: Props) {
             </View>
           </ScrollView>
         </ScrollView>
+        <MoveFeedback feedback={feedback} />
         {cardDrag.drag ? (
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <View style={{
@@ -667,6 +669,26 @@ export function ClockGameScreen({ mode }: Props) {
       </View>
     </SafeAreaView>
   );
+}
+
+function suggestClockMove(position: ClockState): MoveSuggestion | null {
+  const state = normalizeClockState(position);
+  if (state.won || state.lost) return null;
+  if (state.activeCard) {
+    if (placeClockActiveCard(state) === state) return null;
+    const source = state.activeSource ?? { zone: 'stock' as const, pileIndex: 0 };
+    const sourceTarget = source.zone === 'hour' ? `hour-${source.hourIndex}` : `stock-${source.pileIndex}`;
+    const destination = state.activeCard.rank === 13
+      ? `stock-${state.activeStockPileIndex}` : `hour-${getHourIndexForRank(state.activeCard.rank)}`;
+    return {
+      label: state.activeCard.rank === 13
+        ? `Return the active King to stock pile ${(state.activeStockPileIndex ?? 0) + 1}.`
+        : `Move the active ${rankLabel(state.activeCard.rank)} to the ${rankLabel(state.activeCard.rank)} hour.`,
+      targets: [...new Set([sourceTarget, destination])],
+    };
+  }
+  const pileIndex = state.stockPiles.findIndex((_, index) => drawClockStock(state, index) !== state);
+  return pileIndex < 0 ? null : { label: `Draw from stock pile ${pileIndex + 1}.`, targets: [`stock-${pileIndex}`] };
 }
 
 function getHourIndexForRank(rank: number): number {

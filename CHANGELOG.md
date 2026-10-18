@@ -4,6 +4,7 @@
 
 ### Added
 
+- Flash a legal move after repeated taps on the same invalid spot, with written help, reduced-motion support, and no automatic card movement; keep explanations from shifting the board.
 - Explain rejected moves across all five games, with rule-specific feedback for tap/drag attempts.
 - Keep up to 200 failed attempts locally with visible-board context, active rules, reasons, Retry, and JSONL training export from Settings.
 - Redesign the home screen with illustrated game layouts, a responsive game grid, and a distinct Continue tile.

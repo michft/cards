@@ -1,6 +1,8 @@
 # Move explanations and training logs
 
-Rejected moves show the relevant rule above the board. Dismiss the explanation or make a legal move to clear it. Tap and drag controls keep the deal and Undo/Redo history unchanged after rejection. Normal selection changes, deselection, successful moves, hints, and interrupted gestures do not count as failed moves.
+Rejected moves show the relevant rule in a floating notice without shifting the board. Dismiss the explanation or make a legal move to clear it. Tap and drag controls keep the deal and Undo/Redo history unchanged after rejection. Normal selection changes, deselection, successful moves, hints, and interrupted gestures do not count as failed moves.
+
+Tap the same wrong spot again within **1.5 seconds** to see a legal move: its source and destination pulse twice for **2.2 seconds**, with a written suggestion. The app prefers a move for the attempted card when possible, then another legal move or stock action. Nothing moves automatically. Reduce Motion shows a steady highlight. Changing the board, selection, route, or dismissing the notice clears the suggestion. When no suggestion exists, the notice says so. Every rejected attempt still logs separately; Pyramid's normal deselection after an invalid pair can request help without adding a failed-move record.
 
 The log keeps the latest **200 failed attempts**, including pending entries, on this device. It is stored separately from saved games and works offline. Settings → **Failed moves and training** shows saved/pending counts, Retry, **Export training log**, and **Clear failed-move log**. Clearing this log leaves game progress intact. If logging fails, the explanation stays available and the failed write is shown; keep the page open and retry to preserve pending entries.
 

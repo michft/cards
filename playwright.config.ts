@@ -7,7 +7,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { browserName: 'chromium' } },
-    { name: 'ipad-webkit', testMatch: /(?:offline|ipad-layout|game-drag|move-feedback|colours)\.spec\.ts/,
+    { name: 'ipad-webkit', testMatch: /(?:offline|ipad-layout|game-drag|move-feedback|repeat-hint|colours)\.spec\.ts/,
       use: { ...devices['iPad Pro 11'], browserName: 'webkit' } },
   ],
   webServer: {

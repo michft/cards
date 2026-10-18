@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 import { useEffect } from 'react';
+import { AccessibilityInfo } from 'react-native';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createDeck } from '@mumscards/engine-core';
@@ -24,7 +25,7 @@ vi.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 vi.mock('./shared/card-stack', () => ({
   CardStack: (props: ComponentProps<typeof CardStack>) => {
     if (props.onCardDragStart && props.cards[0]) stacks.set(props.cards[0].id, props);
-    return <div>{props.cards.map((card) => <span key={card.id}>{card.id}</span>)}</div>;
+    return <div>{props.cards.length ? props.cards.map((card) => <span key={card.id}>{card.id}</span>) : props.placeholderLabel}</div>;
   },
 }));
 
@@ -46,13 +47,15 @@ function present(): KlondikeState {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Keep the hook's conservative static highlight; animation preferences have dedicated tests.
+  vi.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockImplementation(() => new Promise(() => {}));
   stacks.clear();
   saveGame.mockReset().mockResolvedValue(undefined);
   vi.spyOn(failedMoves, 'recordFailedMove').mockImplementation(() => {});
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => setTimeout(() => callback(0), 0));
   vi.stubGlobal('cancelAnimationFrame', clearTimeout);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-    const left = this.textContent === 'drag-hearts-8' ? 100 : this.textContent === 'drag-diamonds-8' ? 200 : this.textContent === '' ? 300 : 0;
+    const left = this.textContent === 'drag-hearts-8' ? 100 : this.textContent === 'drag-diamonds-8' ? 200 : (this.textContent === '' || this.textContent === 'A') ? 300 : 0;
     return { x: left, y: 0, left, top: 0, right: left + 50, bottom: 70, width: 50, height: 70, toJSON() {} };
   });
   const deck = createDeck('drag');
@@ -157,4 +160,38 @@ it('explains an exhausted draw without adding history and clears the explanation
   expect(failedMoves.recordFailedMove).toHaveBeenCalledTimes(1);
   fireEvent.keyDown(window, { key: 'u' });
   expect(screen.queryByRole('status')).toBeNull();
+});
+
+it('flashes a legal source and destination after repeated invalid foundation taps without changing history', () => {
+  render(<KlondikeGameScreen gameId="klondike" mode="resume" />);
+  act(() => { source().onFaceUpCardPress?.(0); });
+  const before = saveGame.mock.calls.length;
+  fireEvent.click(screen.getAllByText('A')[0]);
+  expect(screen.queryByTestId('move-hint-tableau-0')).toBeNull();
+  fireEvent.click(screen.getAllByText('A')[0]);
+  expect(screen.getByTestId('move-hint-tableau-0')).toBeTruthy();
+  expect(screen.getByTestId('move-hint-tableau-1')).toBeTruthy();
+  expect(screen.queryByTestId('move-hint-foundation-0')).toBeNull();
+  expect(present().tableau[0].map((card) => card.rank)).toEqual([7]);
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(screen.getByRole('button', { name: 'Undo' }).getAttribute('aria-disabled')).toBe('true');
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledTimes(2);
+});
+
+it('flashes a legal stock draw when a repeatedly tapped hidden card cannot move', () => {
+  const state = model.saves.klondike?.state;
+  if (!state) throw new Error('Missing saved Klondike');
+  state.tableau = state.tableau.map(() => []);
+  const cards = createDeck('drag');
+  state.tableau[0] = [{ ...cards[6], faceUp: false }];
+  state.stock = [cards[8]];
+  render(<KlondikeGameScreen gameId="klondike" mode="resume" />);
+  const before = saveGame.mock.calls.length;
+  const hidden = () => stacks.get(cards[6].id);
+  act(() => { hidden()?.onFaceDownCardPress?.(0); });
+  act(() => { hidden()?.onFaceDownCardPress?.(0); });
+  expect(screen.getByTestId('move-hint-stock')).toBeTruthy();
+  expect(screen.queryByTestId('move-hint-tableau-0')).toBeNull();
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledTimes(2);
 });

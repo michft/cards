@@ -1,4 +1,4 @@
-import type { PersistedGameEnvelope } from '@mumscards/engine-core';
+import { rankLabel, type PersistedGameEnvelope } from '@mumscards/engine-core';
 import { Ionicons } from '@expo/vector-icons';
 import {
   createPyramidGame,
@@ -20,7 +20,7 @@ import { palette, radius, spacing, typography } from '../theme';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack } from './shared/card-stack';
 import { useCardDrag } from './shared/use-card-drag';
-import { MoveFeedback, useMoveFeedback } from './shared/use-move-feedback';
+import { MoveFeedback, MoveHintOverlay, useMoveFeedback, type FailedMoveAttempt, type MoveSuggestion } from './shared/use-move-feedback';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
@@ -52,7 +52,8 @@ export function PyramidGameScreen({ mode }: Props) {
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<PyramidSource | null>(null);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
-  const feedback = useMoveFeedback('pyramid', history.present);
+  const feedback = useMoveFeedback('pyramid', history.present,
+    (attempt) => suggestPyramidMove(history.present, selectedSource, attempt));
   const availableWidth = Math.max(320, width - spacing.lg * 2);
   // Seven card rows with six overlaps; stock moves beside them on wide landscape screens.
   const landscapeCardWidth = Math.floor((height - insets.top - insets.bottom - 160) / 8.62);
@@ -230,7 +231,7 @@ export function PyramidGameScreen({ mode }: Props) {
     }
 
     if (isSameSource(selectedSource, source)) {
-      feedback.clear();
+      if (!feedback.repeatPress(source)) feedback.clear();
       setSelectedSource(null);
       return;
     }
@@ -438,7 +439,6 @@ export function PyramidGameScreen({ mode }: Props) {
           ) : null}
 
           {history.present.won ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
-          <MoveFeedback feedback={feedback} />
 
           <ScrollView
             scrollEnabled={!cardDrag.drag}
@@ -449,15 +449,18 @@ export function PyramidGameScreen({ mode }: Props) {
           >
             <View testID="game-board" style={[styles.board, landscape && styles.boardLandscape, { minWidth: boardMinWidth }]}>
               <View style={[styles.topRow, landscape && styles.topRowLandscape]}>
-                <CardStack
-                  accessibilityLabel="Stock: draw or recycle"
-                  cardWidth={cardWidth}
-                  cards={history.present.stock.slice(-1)}
-                  emptyState={stockCount === 0 && canRecycle ? 'recycle' : 'default'}
-                  onCardPress={handleDrawOrRecycle}
-                  placeholderLabel={stockCount > 0 ? String(stockCount) : '↺'}
-                  variant="back"
-                />
+                <View>
+                  <CardStack
+                    accessibilityLabel="Stock: draw or recycle"
+                    cardWidth={cardWidth}
+                    cards={history.present.stock.slice(-1)}
+                    emptyState={stockCount === 0 && canRecycle ? 'recycle' : 'default'}
+                    onCardPress={handleDrawOrRecycle}
+                    placeholderLabel={stockCount > 0 ? String(stockCount) : '↺'}
+                    variant="back"
+                  />
+                  <MoveHintOverlay feedback={feedback} target="stock" />
+                </View>
                 <View
                   testID="pyramid-waste"
                   style={cardDrag.drag?.activeDestination?.zone === 'waste' ? styles.dragTarget : undefined}
@@ -480,6 +483,7 @@ export function PyramidGameScreen({ mode }: Props) {
                     placeholderLabel=""
                     selected={selectedSource?.zone === 'waste'}
                   />
+                  <MoveHintOverlay feedback={feedback} target="waste" />
                 </View>
                 <View style={styles.metaPanel}>
                   <Text style={styles.metaText}>Removed: {history.present.removedCount}</Text>
@@ -536,6 +540,7 @@ export function PyramidGameScreen({ mode }: Props) {
                               ]}
                             />
                           )}
+                          <MoveHintOverlay feedback={feedback} target={`tableau-${rowIndex}-${cardIndex}`} />
                         </View>
                       );
                     })}
@@ -545,6 +550,7 @@ export function PyramidGameScreen({ mode }: Props) {
             </View>
           </ScrollView>
         </ScrollView>
+        <MoveFeedback feedback={feedback} />
         {cardDrag.drag ? (
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <View style={{
@@ -559,6 +565,42 @@ export function PyramidGameScreen({ mode }: Props) {
       </View>
     </SafeAreaView>
   );
+}
+
+function suggestPyramidMove(state: PyramidState, selected: PyramidSource | null, attempt: FailedMoveAttempt): MoveSuggestion | null {
+  if (state.won) return null;
+  const sources: PyramidSource[] = [{ zone: 'waste' }];
+  state.tableau.forEach((row, rowIndex) => row.forEach((card, cardIndex) => {
+    if (card) sources.push({ zone: 'tableau', rowIndex, cardIndex });
+  }));
+  const attempted = sources.find((source) => {
+    const candidate = attempt.source;
+    if (!candidate || !('zone' in candidate) || candidate.zone !== source.zone) return false;
+    return source.zone === 'waste' || ('rowIndex' in candidate && 'cardIndex' in candidate
+      && candidate.rowIndex === source.rowIndex && candidate.cardIndex === source.cardIndex);
+  });
+  const preferred = [selected, attempted].filter((source): source is PyramidSource => Boolean(source));
+  const candidates = [...preferred, ...sources];
+  const target = (source: PyramidSource) => source.zone === 'waste' ? 'waste' : `tableau-${source.rowIndex}-${source.cardIndex}`;
+  for (const source of candidates) {
+    const card = getPyramidSourceCard(state, source);
+    if (!card) continue;
+    if (removePyramidCards(state, [source]) !== state) {
+      return { label: 'Remove the highlighted King on its own.', targets: [target(source)] };
+    }
+    for (const partner of sources) {
+      if (isSameSource(source, partner) || removePyramidCards(state, [source, partner]) === state) continue;
+      const partnerCard = getPyramidSourceCard(state, partner);
+      if (!partnerCard) continue;
+      return {
+        label: `Remove the highlighted ${rankLabel(card.rank)} and ${rankLabel(partnerCard.rank)} together; they total 13.`,
+        targets: [target(source), target(partner)],
+      };
+    }
+  }
+  if (drawPyramidStock(state) !== state) return { label: 'Draw a card from the stock.', targets: ['stock'] };
+  if (recyclePyramidWaste(state) !== state) return { label: 'Recycle the waste to start another stock pass.', targets: ['stock'] };
+  return null;
 }
 
 function isSameSource(left: PyramidSource | null, right: PyramidSource): boolean {
