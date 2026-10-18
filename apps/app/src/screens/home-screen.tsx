@@ -7,23 +7,17 @@ import { useAppModel } from '../state/app-provider';
 import type { GameVariant } from '../state/types';
 import { palette, radius, spacing, typography } from '../theme';
 import { GamePreview } from './game-preview';
-
-const games: Array<{ id: GameVariant; name: string; description: string }> = [
-  { id: 'klondike', name: 'Klondike', description: 'The classic seven-column deal.' },
-  { id: 'clock', name: 'Clock', description: 'Follow the hours. Find the kings.' },
-  { id: 'freecell', name: 'FreeCell', description: 'Four free cells. Every card in view.' },
-  { id: 'pyramid', name: 'Pyramid', description: 'Find pairs that add up to 13.' },
-  { id: 'spider', name: 'Spider', description: 'Build suited runs from King to Ace.' },
-];
+import { availableGames } from './shared/available-games';
 
 export function HomeScreen() {
   const { hydrated, hydrationError, retryHydration, saves } = useAppModel();
   const lastSavedGame = hydrated
     ? (Object.entries(saves) as Array<[GameVariant, (typeof saves)[GameVariant]]>)
+      .filter(([id]) => availableGames.some((game) => game.id === id))
       .filter((entry): entry is [GameVariant, NonNullable<(typeof saves)[GameVariant]>] => Boolean(entry[1]))
       .sort((left, right) => new Date(right[1].updatedAt).getTime() - new Date(left[1].updatedAt).getTime())[0] ?? null
     : null;
-  const lastGameName = games.find((game) => game.id === lastSavedGame?.[0])?.name;
+  const lastGameName = availableGames.find((game) => game.id === lastSavedGame?.[0])?.name;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -31,7 +25,7 @@ export function HomeScreen() {
         <View style={styles.header}>
           <Text style={styles.eyebrow}>A little time for solitaire</Text>
           <Text accessibilityRole="header" style={styles.title}>Mum&apos;s Cards</Text>
-          <Text style={styles.subtitle}>Five familiar games. Pick a table and settle in.</Text>
+          <Text style={styles.subtitle}>Three familiar games. Pick a table and settle in.</Text>
         </View>
 
         {hydrationError ? (
@@ -49,7 +43,7 @@ export function HomeScreen() {
             <Text style={styles.sectionNote}>Play at your own pace</Text>
           </View>
           <View style={styles.grid}>
-            {games.map((game) => (
+            {availableGames.map((game) => (
               <Pressable
                 key={game.id}
                 accessibilityRole="button"

@@ -4,6 +4,7 @@
 
 ### Added
 
+- Add right-side illustrated buttons to start fresh Klondike, FreeCell, or Spider deals during play.
 - Flash a legal move after repeated taps on the same invalid spot, with written help, reduced-motion support, and no automatic card movement; keep explanations from shifting the board.
 - Explain rejected moves across all five games, with rule-specific feedback for tap/drag attempts.
 - Keep up to 200 failed attempts locally with visible-board context, active rules, reasons, Retry, and JSONL training export from Settings.
@@ -15,6 +16,7 @@
 
 ### Fixed
 
+- Temporarily hide Pyramid and Clock (Kings) from home, Games menus, and Continue selection while retaining their saves.
 - Fit every game to measured screen space in portrait and landscape, including long/expanded piles, card labels, and dragged runs; reserve room for scrollable move explanations.
 - Use warm-white text on the green table for Spider headings/counters, Clock labels, pile placeholders, loading indicators, and storage errors; adapt the native status bar to its surface.
 - Keep disabled controls readable on solid muted backgrounds instead of fading their labels into the green table.

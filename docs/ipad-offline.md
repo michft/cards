@@ -9,9 +9,9 @@
 
 The Home Screen app can have separate website storage from Safari. Set it up in that app; Safari's Ready offline message and saves do not prove the installed app is ready. Make the Home Screen app the place you play.
 
-Clock, FreeCell, Klondike, Pyramid, Spider, Rules, and Settings are included. Games, snapshots, and Undo/Redo history save locally on this iPad. No account or network connection is needed after setup.
+Klondike, FreeCell, Spider, Rules, and Settings are available. Pyramid and Clock (Kings) are temporarily hidden from game choices and Continue; their saved games remain intact. Games, snapshots, and Undo/Redo history save locally on this iPad. No account or network connection is needed after setup.
 
-Choose a game from its illustrated home-screen tile. During play, drag cards or runs onto legal destinations, or keep using taps. In Clock, drag the active card to its hour; Kings return to their original stock pile. In Pyramid, drag a card onto its partner; tap lone Kings to remove them. Invalid or interrupted drags leave the deal unchanged. In Spider, tap **Hint** again to see the next suggestion; changing the board starts the hint cycle over.
+Choose a game from its illustrated home-screen tile. During play, use the image buttons on the right to start a fresh Klondike, FreeCell, or Spider deal, including the game already open. Use the Games menu to resume another saved deal. Drag cards or runs onto legal destinations, or keep using taps. Invalid or interrupted drags leave the deal unchanged. In Spider, tap **Hint** again to see the next suggestion; changing the board starts the hint cycle over.
 
 Rotate the iPad to play in landscape. All five boards use the measured space below the toolbar, including a shorter viewport with browser controls visible. Long tableau piles and held-open cards compress their spacing to fit; every card remains present. Card ranks adapt to exposed space, and dragged runs stay inside the screen. Pyramid chooses stock placement to fit its rows; Clock includes its full circle, fans, and labels. Explanations use reserved space below the board, with scrolling inside longer messages. Rotation keeps the deal and Undo/Redo history. Optional debug panels can still need scrolling.
 

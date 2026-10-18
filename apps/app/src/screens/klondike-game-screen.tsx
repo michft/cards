@@ -37,6 +37,8 @@ import { ShortcutPressable } from './shared/shortcut-pressable';
 import { isEditableTarget, useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 import { MoveFeedback, MoveHintOverlay, useMoveFeedback } from './shared/use-move-feedback';
 import { useGameBoardSpace } from './shared/use-game-board-space';
+import { GameScreenLayout } from './shared/game-screen-layout';
+import { availableGames } from './shared/available-games';
 import { getKlondikeRejection } from './shared/move-rejection-reasons';
 
 type HistoryState = GameHistory<KlondikeState>;
@@ -888,6 +890,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <GameScreenLayout currentGame="klondike" onNew={startNewGame}>
       <View onLayout={measureRoot} ref={rootRef} style={styles.screen}>
         <View style={styles.floatingNavWrap}>
           <View style={styles.floatingNavRow}>
@@ -901,49 +904,20 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
           </View>
           {gameMenuOpen ? (
             <View style={styles.floatingGameMenu}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/clock?mode=resume');
-                }}
-                style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
-              >
-                <Text style={styles.gameSwitchButtonText}>Clock</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/freecell?mode=resume');
-                }}
-                style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
-              >
-                <Text style={styles.gameSwitchButtonText}>FreeCell</Text>
-              </Pressable>
-              <View style={[styles.gameSwitchButton, styles.gameSwitchButtonActive]}>
-                <Text style={styles.gameSwitchButtonTextActive}>Klondike</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/pyramid?mode=resume');
-                }}
-                style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
-              >
-                <Text style={styles.gameSwitchButtonText}>Pyramid</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/spider?mode=resume');
-                }}
-                style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}
-              >
-                <Text style={styles.gameSwitchButtonText}>Spider</Text>
-              </Pressable>
+              {availableGames.map((game) => game.id === 'klondike' ? (
+                <View key={game.id} style={[styles.gameSwitchButton, styles.gameSwitchButtonActive]}>
+                  <Text style={styles.gameSwitchButtonTextActive}>{game.name}</Text>
+                </View>
+              ) : (
+                <Pressable key={game.id} accessibilityRole="button"
+                  onPress={() => {
+                    setGameMenuOpen(false);
+                    router.replace(`/game/${game.id}?mode=resume`);
+                  }}
+                  style={({ pressed }) => [styles.gameSwitchButton, pressed && styles.actionButtonPressed]}>
+                  <Text style={styles.gameSwitchButtonText}>{game.name}</Text>
+                </Pressable>
+              ))}
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
@@ -987,6 +961,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
           </View>
         ) : null}
       </View>
+      </GameScreenLayout>
     </SafeAreaView>
   );
 }

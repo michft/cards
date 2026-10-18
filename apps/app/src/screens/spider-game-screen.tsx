@@ -10,6 +10,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { useGameBoardSpace } from './shared/use-game-board-space';
+import { GameScreenLayout } from './shared/game-screen-layout';
+import { availableGames } from './shared/available-games';
 import { CardStack } from './shared/card-stack';
 import { useCardDrag } from './shared/use-card-drag';
 import { MoveFeedback, MoveHintOverlay, useMoveFeedback, type FailedMoveAttempt, type MoveSuggestion } from './shared/use-move-feedback';
@@ -45,7 +47,8 @@ export function SpiderGameScreen({ mode }: Props) {
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const [hintCursor, setHintCursor] = useState<{ state: SpiderState; index: number } | null>(null);
   const [stockMetaHeight, setStockMetaHeight] = useState(50);
-  const inlineStock = boardSpace.width >= 760;
+  const inlineStock = boardSpace.width >= 760
+    || (boardSpace.width >= 520 && boardSpace.width > boardSpace.height);
   const headerGap = spacing.lg;
   const stockMetaWidth = 140;
   const fanSpace = Math.min(
@@ -326,6 +329,7 @@ export function SpiderGameScreen({ mode }: Props) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <GameScreenLayout currentGame="spider" onNew={startNewGame}>
       <View ref={cardDrag.rootRef} onLayout={cardDrag.measureTargets} style={styles.screen}>
         <View style={styles.floatingNavWrap}>
           <View style={styles.floatingNavRow}>
@@ -339,49 +343,20 @@ export function SpiderGameScreen({ mode }: Props) {
           </View>
           {gameMenuOpen ? (
             <View style={styles.floatingGameMenu}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/clock?mode=resume');
-                }}
-                style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
-              >
-                <Text style={styles.switchButtonText}>Clock</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/freecell?mode=resume');
-                }}
-                style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
-              >
-                <Text style={styles.switchButtonText}>FreeCell</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/klondike?mode=resume');
-                }}
-                style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
-              >
-                <Text style={styles.switchButtonText}>Klondike</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/pyramid?mode=resume');
-                }}
-                style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
-              >
-                <Text style={styles.switchButtonText}>Pyramid</Text>
-              </Pressable>
-              <View style={[styles.switchButton, styles.switchButtonActive]}>
-                <Text style={styles.switchButtonTextActive}>Spider</Text>
-              </View>
+              {availableGames.map((game) => game.id === 'spider' ? (
+                <View key={game.id} style={[styles.switchButton, styles.switchButtonActive]}>
+                  <Text style={styles.switchButtonTextActive}>{game.name}</Text>
+                </View>
+              ) : (
+                <Pressable key={game.id} accessibilityRole="button"
+                  onPress={() => {
+                    setGameMenuOpen(false);
+                    router.replace(`/game/${game.id}?mode=resume`);
+                  }}
+                  style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}>
+                  <Text style={styles.switchButtonText}>{game.name}</Text>
+                </Pressable>
+              ))}
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
@@ -627,6 +602,7 @@ export function SpiderGameScreen({ mode }: Props) {
           </View>
         ) : null}
       </View>
+      </GameScreenLayout>
     </SafeAreaView>
   );
 }
