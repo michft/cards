@@ -202,32 +202,68 @@ function shuffle<T>(items: T[], random: () => number): T[] {
   return next;
 }
 
-function normalizeClockState(state: ClockState): ClockState {
+/** Normalize persisted Clock layouts without mutating the saved position. */
+export function normalizeClockState(state: ClockState): ClockState {
   if (state.stockPiles && state.stockPiles.length === 4) {
+    const completedStockPiles = state.completedStockPiles ?? [];
+    let activeStockPileIndex = state.activeStockPileIndex ?? null;
+
+    if (state.activeCard && activeStockPileIndex === null) {
+      const vacant = state.stockPiles.flatMap((pile, index) =>
+        pile.length === 0 && !completedStockPiles.includes(index) ? [index] : [],
+      );
+      const source = state.activeSource;
+      if (source?.zone === 'stock' && vacant.includes(source.pileIndex)) {
+        activeStockPileIndex = source.pileIndex;
+      } else if (vacant.length === 1) {
+        activeStockPileIndex = vacant[0];
+      }
+    }
+
     return {
       ...state,
-      activeStockPileIndex: state.activeStockPileIndex ?? null,
-      completedStockPiles: state.completedStockPiles ?? [],
+      activeSource: state.activeSource ?? null,
+      activeStockPileIndex,
+      completedStockPiles,
       returnedKingIds: state.returnedKingIds ?? [],
       placedCardIds: state.placedCardIds ?? [],
       lost: state.lost ?? false,
     };
   }
 
+  // Original saves used a flat stock and stored found Kings separately. They did
+  // not record chain origins, so assign completed/active chains vacant slots.
   const legacyStock = state.stock ?? [];
   const stockPiles = [0, 1, 2, 3].map((index) => {
     const card = legacyStock[legacyStock.length - 1 - index];
     return card ? [{ ...card }] : [];
   });
+  const completedStockPiles = state.kings.map((king, index) => {
+    const pileIndex = legacyStock.length + index;
+    if (stockPiles[pileIndex]) stockPiles[pileIndex].push({ ...king });
+    return pileIndex;
+  });
+  const activeStockPileIndex = state.activeCard
+    ? stockPiles.findIndex((pile, index) => pile.length === 0 && !completedStockPiles.includes(index))
+    : -1;
+  // Original hours were Ace-first; current hours are clock order (Queen first).
+  const hours = [state.hours[11], ...state.hours.slice(0, 11)];
+  const placedCardIds = state.placedCardIds ?? hours.flatMap((pile, hourIndex) => {
+    const rank = hourIndex === 0 ? 12 : hourIndex;
+    const firstHidden = pile.findIndex((card) => card.rank !== rank);
+    return pile.slice(0, firstHidden < 0 ? pile.length : firstHidden).map((card) => card.id);
+  });
 
   return {
     ...state,
+    hours,
     stockPiles,
     stock: [],
-    activeStockPileIndex: null,
-    completedStockPiles: [],
-    returnedKingIds: [],
-    placedCardIds: state.placedCardIds ?? [],
-    lost: false,
+    activeSource: state.activeSource ?? null,
+    activeStockPileIndex: activeStockPileIndex < 0 ? null : activeStockPileIndex,
+    completedStockPiles,
+    returnedKingIds: state.kings.map((king) => king.id),
+    placedCardIds: [...new Set([...placedCardIds, ...state.kings.map((king) => king.id)])],
+    lost: state.lost ?? false,
   };
 }

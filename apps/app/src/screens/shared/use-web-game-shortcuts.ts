@@ -30,7 +30,18 @@ export function useWebGameShortcuts({
       const key = event.key.toLowerCase();
       const commandPressed = event.metaKey || event.ctrlKey;
 
-      if (!commandPressed || event.altKey) {
+      if (!commandPressed) {
+        return;
+      }
+
+      // Option changes event.key on macOS; code identifies the physical N key.
+      if (event.altKey && (event.code === 'KeyN' || key === 'n') && !event.shiftKey && onNew) {
+        event.preventDefault();
+        onNew();
+        return;
+      }
+
+      if (event.altKey) {
         return;
       }
 
@@ -43,12 +54,6 @@ export function useWebGameShortcuts({
       if (key === 'z' && event.shiftKey && onRedo) {
         event.preventDefault();
         onRedo();
-        return;
-      }
-
-      if (key === 'n' && !event.shiftKey && onNew) {
-        event.preventDefault();
-        onNew();
         return;
       }
 

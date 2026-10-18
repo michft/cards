@@ -27,6 +27,10 @@ These rules should apply to every game module (`Klondike`, `Spider`, `FreeCell`,
 - Save original deal and up to 50 Undo/Redo states with both resumable games and snapshots. Restart restores the original deal after Resume/Load.
 - Legacy saves without history retain the saved position as their only available restart point.
 - Storage read failures must block hydration and writes until a successful retry; unread saves must never become empty defaults.
+- Validate saved card/layout/rule/history structure before loading. Ignore malformed positions; normalize recoverable legacy Clock chains and reject ambiguous origins.
+- Treat saves as durable only after successful storage writes. Show failed writes globally, retain pending changes for Retry, and warn before closing the page with a save error.
+- Serialize writes; on web use Web Locks around read/merge/write. Browser saving requires Web Locks in a secure context (HTTPS or localhost); unsupported contexts fail visibly instead of saving unsafely.
+- Merge other variants' latest saves. Block stale same-game writes; Load latest saves returns home and discards unsaved local changes explicitly.
 
 ## Settings
 - Route each game to its own settings context (e.g. `?game=klondike`, `?game=spider`, `?game=freecell`).
@@ -38,7 +42,8 @@ These rules should apply to every game module (`Klondike`, `Spider`, `FreeCell`,
 ## Web keyboard shortcuts
 - Handle shortcuts only while the game screen is focused; Settings and Rules must not modify a hidden game.
 - Leave shortcuts in inputs, textareas, selects, and editable content to the browser.
-- Support Cmd/Ctrl+Z (Undo), Cmd/Ctrl+Shift+Z (Redo), Cmd/Ctrl+N (New), Cmd/Ctrl+R (Restart), and Cmd/Ctrl+A (Offload where available).
+- Support Cmd/Ctrl+Z (Undo), Cmd/Ctrl+Shift+Z (Redo), Cmd/Ctrl+Alt+N (New), Cmd/Ctrl+R (Restart), and Cmd/Ctrl+A (Offload where available).
+- Leave browser-reserved Cmd/Ctrl+N and Cmd/Ctrl+Shift+N unhandled.
 - Preserve Klondike's unmodified U/R/H/D shortcuts while focused. Plain N must not silently start a new deal.
 
 ## Validation

@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- Validate saved cards, variant layouts, rules, and history before mounting; ignore malformed positions without crashing.
+- Recover legacy Clock chains with active Kings and migrate original flat-stock layouts without losing cards; reject ambiguous origins.
+- Fix inherited-key Rules routes and explain Clock King returns and FreeCell auxiliary columns correctly.
+- Show failed writes with Retry, serialize pending saves, and protect other tabs' progress with locked read/merge and stale-game conflict checks.
+- Use final drag-release coordinates instead of the previously highlighted destination.
+- Use Cmd/Ctrl+Alt+N for New so Cmd/Ctrl+N remains available to the browser.
+- Correct Klondike completion eligibility and remove Spider's arbitrary 12-card move cap.
 - Replace New game URLs with resumable URLs after saving; Games menus resume progress and home exits replace the game screen.
 - Preserve original deals and up to 50 Undo/Redo positions across Resume and Snapshot Load. Legacy saves restart from their saved position.
 - Block writes after storage read failures and offer Retry instead of overwriting unread saves.

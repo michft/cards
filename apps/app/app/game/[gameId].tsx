@@ -13,11 +13,11 @@ import { SpiderGameScreen } from '../../src/screens/spider-game-screen';
 export default function GameRoute() {
   const params = useLocalSearchParams<{ gameId?: string; mode?: string }>();
   const router = useRouter();
-  const { hydrated, hydrationError, retryHydration, saves } = useAppModel();
+  const { hydrated, hydrationError, retryHydration, saves, saveRevision } = useAppModel();
   const gameId = params.gameId === 'spider' || params.gameId === 'clock'
     || params.gameId === 'freecell' || params.gameId === 'pyramid' ? params.gameId : 'klondike';
   const mode = params.mode === 'new' ? 'new' : 'resume';
-  const gameKey = `${gameId}:${mode}`;
+  const gameKey = `${gameId}:${mode}:${saveRevision}`;
   const savedGame = saves[gameId];
   const request = useRef({ key: gameKey, hydrated, previousSave: savedGame, replaced: false });
   if (request.current.key !== gameKey || request.current.hydrated !== hydrated) {

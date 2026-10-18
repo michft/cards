@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createClockGame, drawClockStock, placeClockActiveCard } from '../src/engine';
+import { createClockGame, drawClockStock, placeClockActiveCard, normalizeClockState } from '../src/engine';
 import type { ClockState } from '../src/types';
 
 describe('createClockGame', () => {
@@ -103,7 +103,7 @@ describe('clock moves', () => {
     expect(next.placedCardIds).toContain('active-3');
   });
 
-  it('routes kings to the king pile', () => {
+  it('returns Kings to the stock pile that started their chain', () => {
     const state: ClockState = {
       gameId: 'clock',
       hours: Array.from({ length: 12 }, () => []),
@@ -158,5 +158,69 @@ describe('clock moves', () => {
     expect(next.kings).toHaveLength(4);
     expect(next.won).toBe(false);
     expect(next.lost).toBe(true);
+  });
+});
+
+describe('legacy Clock continuation', () => {
+  function activeKingState(): ClockState {
+    let seed = 2;
+    const dealt = createClockGame(() => {
+      seed = (1664525 * seed + 1013904223) >>> 0;
+      return seed / 2 ** 32;
+    });
+    const kingPileIndex = dealt.stockPiles.findIndex((pile) => pile[0]?.rank === 13);
+    [dealt.stockPiles[2], dealt.stockPiles[kingPileIndex]] = [dealt.stockPiles[kingPileIndex], dealt.stockPiles[2]];
+    return { ...drawClockStock(dealt, 2), activeStockPileIndex: null };
+  }
+
+  it('recovers the active stock source when the chain index is absent', () => {
+    const state = activeKingState();
+    const before = structuredClone(state);
+    const next = placeClockActiveCard(state);
+    expect(next.activeCard).toBeNull();
+    expect(next.stockPiles[2]).toEqual([state.activeCard]);
+    expect(next.completedStockPiles).toContain(2);
+    expect(state).toEqual(before);
+  });
+
+  it('recovers a chain revealed from an hour using its unique vacant stock pile', () => {
+    const state = activeKingState();
+    state.activeSource = { zone: 'hour', hourIndex: 5 };
+    expect(placeClockActiveCard(state).stockPiles[2]).toEqual([state.activeCard]);
+  });
+
+  it('does not guess an origin when modern stock piles have multiple vacant chains', () => {
+    const state = activeKingState();
+    state.stockPiles[1] = [];
+    state.activeSource = { zone: 'hour', hourIndex: 5 };
+    expect(normalizeClockState(state).activeStockPileIndex).toBeNull();
+    expect(placeClockActiveCard(state)).toBe(state);
+  });
+
+  it('migrates old flat stock, hour order and found Kings without losing physical cards', () => {
+    const dealt = createClockGame(() => 0.5);
+    const allCards = [...dealt.hours.flat(), ...dealt.stockPiles.flat()];
+    const kings = allCards.filter((card) => card.rank === 13);
+    const remaining = allCards.filter((card) => card.rank !== 13);
+    const oldHours = Array.from({ length: 12 }, () => [] as typeof allCards);
+    [...remaining.slice(2), ...kings.slice(2)].forEach((card, index) => oldHours[index % 12].push(card));
+    const legacy = {
+      gameId: 'clock', hours: oldHours, stock: [remaining[0], remaining[1]],
+      activeCard: kings[1], kings: [kings[0]], won: false,
+    } as ClockState;
+    const before = structuredClone(legacy);
+    const normalized = normalizeClockState(legacy);
+    const next = placeClockActiveCard(legacy);
+    expect(normalized.hours[1]).toEqual(oldHours[0]);
+    expect(normalized.hours[0]).toEqual(oldHours[11]);
+    expect(normalized.stockPiles.map((pile) => pile.map((card) => card.id)))
+      .toEqual([[remaining[1].id], [remaining[0].id], [kings[0].id], []]);
+    expect(next.stockPiles[3]).toEqual([kings[1]]);
+    expect(next.completedStockPiles).toEqual([2, 3]);
+    const ids = [...next.hours.flat(), ...next.stockPiles.flat()].map((card) => card.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.sort()).toEqual([...oldHours.flat(), ...legacy.stock!, ...legacy.kings, legacy.activeCard!].map((card) => card.id).sort());
+    expect(legacy).toEqual(before);
+    expect(normalizeClockState(normalized)).toEqual(normalized);
   });
 });
