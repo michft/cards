@@ -10,5 +10,12 @@ await mkdir(artifacts, { recursive: true });
 const { fileURLToPath } = await import('node:url');
 const archive = resolve(fileURLToPath(artifacts), `mumscards-ipad-offline-${version.slice(0, 12)}.zip`);
 await rm(archive, { force: true });
-execFileSync('zip', ['-q', '-r', archive, '.'], { cwd: directory });
+try {
+  execFileSync('zip', ['-q', '-r', archive, '.'], { cwd: directory });
+} catch (error) {
+  if (error.code === 'ENOENT') {
+    throw new Error('Offline packaging requires the zip executable. Install zip, then retry pnpm web:package.', { cause: error });
+  }
+  throw error;
+}
 console.log(archive);

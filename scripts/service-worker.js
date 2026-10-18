@@ -65,7 +65,20 @@ self.addEventListener('fetch', (event) => {
   if (!ASSETS.has(asset)) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
-    return await cache.match(asset, { ignoreSearch: true }) || fetch(request);
+    const cached = await cache.match(asset, { ignoreSearch: true });
+    if (cached) return cached;
+    try {
+      return await fetch(request);
+    } catch {
+      if (request.mode === 'navigate') {
+        const home = await cache.match('/index.html');
+        if (home) return home;
+      }
+      return new Response('Offline content unavailable. Reconnect and try again.', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    }
   })());
 });
 

@@ -33,6 +33,7 @@ function worker(source, manifest, { failAsset, cacheError = false } = {}) {
   const stores = new Map();
   const observations = { claims: 0, skipWaiting: 0, downloads: [], network: [] };
   const servedContent = new Map();
+  let networkResponse;
   const key = (input) => new URL(typeof input === 'string' ? input : input.url, origin).href;
   const caches = {
     async open(name) {
@@ -64,7 +65,7 @@ function worker(source, manifest, { failAsset, cacheError = false } = {}) {
     }
   }
   vm.runInNewContext(source, {
-    self, caches, URL, Request: WorkerRequest, crypto: webcrypto,
+    self, caches, URL, Request: WorkerRequest, Response, crypto: webcrypto,
     async fetch(request) {
       if (request.cache === 'reload') {
         const pathname = new URL(request.url).pathname;
@@ -76,6 +77,7 @@ function worker(source, manifest, { failAsset, cacheError = false } = {}) {
         return new Response(content, { status: content === undefined ? 404 : 200 });
       }
       observations.network.push(request.url);
+      if (networkResponse) return networkResponse.clone();
       throw new Error('Offline');
     },
   });
@@ -102,6 +104,7 @@ function worker(source, manifest, { failAsset, cacheError = false } = {}) {
     event, status, stores, observations,
     failDownload(asset) { failAsset = asset; },
     serveContent(asset, content) { servedContent.set(asset, content); },
+    serveNetwork(response) { networkResponse = response; },
     cacheName: `mumscards-offline-${manifest.version}`,
     request(path, mode = 'navigate', method = 'GET') {
       return event('fetch', { request: { url: new URL(path, origin).href, mode, method } });
@@ -154,6 +157,23 @@ test('failed installation leaves no ready cache or damage to the previous versio
   const status = await runtime.status();
   assert.equal(status.ready, false);
   assert.match(status.error, /incomplete/);
+});
+
+test('evicted assets use network, then navigation home fallback or a defined 503', async (t) => {
+  const { directory, manifest } = await exportedApp(t);
+  const runtime = worker(await readFile(join(directory, 'sw.js'), 'utf8'), manifest);
+  await runtime.event('install');
+  const entries = runtime.stores.get(runtime.cacheName);
+  entries.delete(`${origin}/rules.html`);
+  entries.delete(`${origin}/assets/app.js`);
+  assert.equal(await (await runtime.request('/rules?game=clock')).text(), 'home');
+  assert.equal((await runtime.request('/assets/app.js', 'cors')).status, 503);
+  entries.delete(`${origin}/index.html`);
+  assert.equal((await runtime.request('/rules?game=clock')).status, 503);
+  runtime.serveNetwork(new Response('online rules', { status: 200 }));
+  assert.equal(await (await runtime.request('/rules?game=clock')).text(), 'online rules');
+  runtime.serveNetwork(new Response('server unavailable', { status: 503 }));
+  assert.equal(await (await runtime.request('/rules?game=clock')).text(), 'server unavailable');
 });
 
 test('activation only removes this app obsolete caches and claims clients without forced updates', async (t) => {

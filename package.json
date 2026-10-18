@@ -19,7 +19,7 @@
     "build:web": "pnpm web:build",
     "web:build": "pnpm --filter app run web:build",
     "web:package": "pnpm web:build && node scripts/package-offline.mjs",
-    "test:offline-build": "node --test scripts/build-offline.test.mjs"
+    "test:offline-build": "node --test scripts/build-offline.test.mjs scripts/package-offline.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

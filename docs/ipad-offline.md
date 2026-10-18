@@ -34,6 +34,8 @@ pnpm web:package
 
 This builds `apps/app/dist` and creates `artifacts/mumscards-ipad-offline-<build>.zip`. Deploy the **unpacked contents at an HTTPS site's root**. The ZIP is a hosting artifact; opening it in the iPad Files app does not install a working offline app.
 
+Packaging requires the `zip` executable on your computer.
+
 `vercel.json` supplies the build/output settings, game routes, and worker cache headers. `serve.json` supplies equivalent local routes without changing `.html` asset URLs. Other hosts must preserve those asset URLs and serve `sw.js` with revalidation. Keep all files from the same build together. Production deployment remains pending; adding this configuration does not update an existing deployment.
 
 ## Verification

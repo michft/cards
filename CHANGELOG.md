@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- Announce Rules/Settings loading politely, explain missing ZIP tooling, and return an offline home page or HTTP 503 when a cached file and network are unavailable.
 - Give gameplay, menu, and snapshot controls 44-pixel minimum touch targets and reserve space below the floating Games menu.
 - Give Spider's settings button the same accessible label as the other games.
 - Hydrate query-dependent Rules and Settings content after mounting to match static HTML.
