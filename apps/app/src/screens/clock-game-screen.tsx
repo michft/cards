@@ -6,7 +6,7 @@ import { createClockGame, drawClockStock, placeClockActiveCard, type ClockState 
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
@@ -34,7 +34,8 @@ const suitSymbols: Record<PlayingCard['suit'], string> = {
 
 export function ClockGameScreen({ mode }: Props) {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const {
     clearGame,
     deleteSnapshot,
@@ -53,14 +54,6 @@ export function ClockGameScreen({ mode }: Props) {
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const feedback = useMoveFeedback('clock', history.present);
   const availableWidth = Math.max(320, width - spacing.lg * 2);
-  const cardWidth = Math.max(42, Math.min(64, availableWidth / 9));
-  const cardHeight = Math.round(cardWidth * 1.42);
-  const radialFanStep = Math.max(8, Math.round(cardWidth * 0.2));
-  const boardSize = cardWidth * 6.6;
-  const radiusPx = boardSize * 0.42;
-  const centerStockGap = spacing.xs;
-  const centerStockWidth = cardWidth * 2 + centerStockGap;
-  const centerStockHeight = cardHeight * 2 + centerStockGap;
   const compactLabels = width < 420;
   const hourLabels = compactLabels
     ? baseHourLabels.map((label, index) => (index === 10 ? 'X' : label))
@@ -80,6 +73,18 @@ export function ClockGameScreen({ mode }: Props) {
     );
     return Math.max(maxDepth, pile.length + (activeFromThisHour ? 1 : 0));
   }, 1);
+  // Canvas = board diameter + two card heights and outward fans. Leave room for controls.
+  const landscapeCardWidth = Math.floor((height - insets.top - insets.bottom - 160 - maxHourDepth)
+    / (9.44 + 0.4 * (maxHourDepth - 1)));
+  const cardWidth = Math.max(42, Math.min(64, availableWidth / 9,
+    width > height ? landscapeCardWidth : Infinity));
+  const cardHeight = Math.round(cardWidth * 1.42);
+  const radialFanStep = Math.max(8, Math.round(cardWidth * 0.2));
+  const boardSize = cardWidth * 6.6;
+  const radiusPx = boardSize * 0.42;
+  const centerStockGap = spacing.xs;
+  const centerStockWidth = cardWidth * 2 + centerStockGap;
+  const centerStockHeight = cardHeight * 2 + centerStockGap;
   const outwardTail = radialFanStep * Math.max(0, maxHourDepth - 1);
   const labelRadius = radiusPx + cardHeight * 0.55;
   const contentRadius = Math.max(labelRadius + spacing.sm, radiusPx + outwardTail + cardHeight);
@@ -437,7 +442,7 @@ export function ClockGameScreen({ mode }: Props) {
             contentContainerStyle={[styles.clockBoardScrollContent, { paddingHorizontal: boardMargin }]}
             showsHorizontalScrollIndicator={false}
           >
-            <View style={[styles.clockBoard, { height: clockCanvasSize, width: clockCanvasSize }]}>
+            <View testID="game-board" style={[styles.clockBoard, { height: clockCanvasSize, width: clockCanvasSize }]}>
             {history.present.hours.map((pile, hourIndex) => {
               const angle = (Math.PI * 2 * hourIndex) / 12 - Math.PI / 2;
               const center = clockCanvasSize / 2;

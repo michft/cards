@@ -1,5 +1,7 @@
 # Glossary
 
+- **Landscape board:** Game layout adapted to a wider, shorter screen. Pyramid places stock beside its rows; Clock sizes its full circle to available height. Rotation preserves the deal and history.
+
 - **Deal:** Original and current card layouts plus game rules. New creates a fresh deal; Restart restores its original layout. Legacy saves without an original layout restart from their saved position.
 - **Pending defaults:** Settings used when creating the next deal. Changing them does not alter an active deal.
 - **Resume:** Restore the latest in-progress deal for a variant, including its original layout and up to 50 Undo/Redo positions.

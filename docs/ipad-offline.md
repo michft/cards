@@ -13,6 +13,8 @@ Clock, FreeCell, Klondike, Pyramid, Spider, Rules, and Settings are included. Ga
 
 Choose a game from its illustrated home-screen tile. During play, drag cards or runs onto legal destinations, or keep using taps. In Clock, drag the active card to its hour; Kings return to their original stock pile. In Pyramid, drag a card onto its partner; tap lone Kings to remove them. Invalid or interrupted drags leave the deal unchanged. In Spider, tap **Hint** again to see the next suggestion; changing the board starts the hint cycle over.
 
+Rotate the iPad to play in landscape. All five starting boards fit the 11-inch iPad, including a shorter viewport with browser controls visible. Pyramid puts its stock and waste beside the card rows; Clock sizes its circle to the available height and pile depth. Rotation keeps the deal and Undo/Redo history. Long tableau piles, expanded cards, explanations, and debug panels can still need scrolling.
+
 Keep the app's website data. Clearing it can erase saves and the offline copy; iPadOS can also evict website storage. If **Offline setup incomplete** appears, reconnect and choose **Retry offline setup** before relying on offline play again. Offline readiness confirms app files are available; it does not clear a separate save-error message.
 
 ## Updates

@@ -504,7 +504,7 @@ export function SpiderGameScreen({ mode }: Props) {
             </View>
           ) : null}
           <ScrollView horizontal contentContainerStyle={styles.horizontalBoardContent} showsHorizontalScrollIndicator={false} scrollEnabled={!cardDrag.drag} onScroll={cardDrag.measureTargets} scrollEventThrottle={16}>
-            <View style={[styles.board, { minWidth: boardMinWidth }]}>
+            <View testID="game-board" style={[styles.board, { minWidth: boardMinWidth }]}>
               <View style={styles.stockRow}>
                 <CardStack
                   cardWidth={cardWidth}
