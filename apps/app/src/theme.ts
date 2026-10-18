@@ -1,6 +1,8 @@
 export const palette = {
   table: '#1f5a44',
   tableShadow: '#174635',
+  onTable: '#fff8e8',
+  onTableMuted: '#e0eadf',
   paper: '#f6f1e7',
   ink: '#122119',
   accent: '#d7b56d',

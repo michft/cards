@@ -70,7 +70,7 @@ export function RulesScreen() {
   if (!mounted) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ActivityIndicator accessibilityLabel="Loading rules" accessibilityLiveRegion="polite" />
+        <ActivityIndicator color={palette.onTable} accessibilityLabel="Loading rules" accessibilityLiveRegion="polite" />
       </SafeAreaView>
     );
   }

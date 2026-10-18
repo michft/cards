@@ -14,6 +14,8 @@
 
 ### Fixed
 
+- Use warm-white text on the green table for Spider headings/counters, Clock labels, pile placeholders, loading indicators, and storage errors; adapt the native status bar to its surface.
+- Keep disabled controls readable on solid muted backgrounds instead of fading their labels into the green table.
 - Fit iPad landscape boards within available height: place Pyramid stock beside its rows and size Clock's canvas for the current pile depth and safe area.
 - Announce Rules/Settings loading politely, explain missing ZIP tooling, and return an offline home page or HTTP 503 when a cached file and network are unavailable.
 - Give gameplay, menu, and snapshot controls 44-pixel minimum touch targets and reserve space below the floating Games menu.

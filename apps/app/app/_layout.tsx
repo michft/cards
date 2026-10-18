@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
@@ -8,12 +8,13 @@ import { PersistenceNotice } from '../src/state/persistence-notice';
 import { startOfflineApp } from '../src/offline/offline-app';
 
 export default function RootLayout() {
+  const pathname = usePathname();
   useEffect(() => {
     if (Platform.OS === 'web') return startOfflineApp();
   }, []);
   return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style={pathname === '/' || pathname.startsWith('/game/') ? 'light' : 'dark'} />
       <PersistenceNotice />
       <Stack
         screenOptions={{
