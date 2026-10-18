@@ -27,12 +27,14 @@ export function useCardDrag<Source, Destination>({
   getCards,
   getDestinations,
   onDrop,
+  onReject,
   onStart,
   onCancel,
 }: {
   getCards(source: Source): PlayingCard[];
   getDestinations(source: Source): Destination[];
   onDrop(source: Source, destination: Destination): void;
+  onReject?(source: Source, destination: Destination | null): void;
   onStart?(source: Source): void;
   onCancel?(): void;
 }) {
@@ -82,11 +84,11 @@ export function useCardDrag<Source, Destination>({
     }
   }
 
-  function destinationAtPoint(active: Drag<Source, Destination>, payload: DragPayload) {
+  function destinationAtPoint(active: Drag<Source, Destination>, payload: DragPayload, legalOnly = true) {
     for (const target of targets.current.values()) {
       const rectangle = target.rectangle;
-      if (!target.node || !rectangle || !active.destinations.some((destination) =>
-        JSON.stringify(destination) === JSON.stringify(target.destination))) continue;
+      if (!target.node || !rectangle || (legalOnly && !active.destinations.some((destination) =>
+        JSON.stringify(destination) === JSON.stringify(target.destination)))) continue;
       if (payload.pageX >= rectangle.x && payload.pageX <= rectangle.x + rectangle.width &&
         payload.pageY >= rectangle.y && payload.pageY <= rectangle.y + rectangle.height) {
         return target.destination;
@@ -98,7 +100,11 @@ export function useCardDrag<Source, Destination>({
   function start(source: Source, payload: DragPayload) {
     const cards = getCards(source);
     const destinations = getDestinations(source);
-    if (!cards.length || !destinations.length) return;
+    if (!cards.length) {
+      onReject?.(source, null);
+      return;
+    }
+    if (!destinations.length && !onReject) return;
     const active: Drag<Source, Destination> = {
       source, cards, destinations,
       x: payload.layout.x, y: payload.layout.y,
@@ -137,9 +143,14 @@ export function useCardDrag<Source, Destination>({
     // Re-measure at release: scrolling or a fast final movement may change the target.
     measure(() => {
       if (currentDrag.current !== active) return;
-      const destination = destinationAtPoint(active, payload);
+      const destination = destinationAtPoint(active, payload) ?? destinationAtPoint(active, payload, false);
       cancel();
-      if (destination !== null) onDrop(active.source, destination);
+      if (destination !== null && active.destinations.some((legal) =>
+        JSON.stringify(legal) === JSON.stringify(destination))) {
+        onDrop(active.source, destination);
+      } else {
+        onReject?.(active.source, destination);
+      }
     });
   }
 

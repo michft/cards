@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createDeck, type PlayingCard } from '@mumscards/engine-core';
 import { createSpiderGame, type SpiderState } from '@mumscards/game-spider';
 import type { useAppModel } from '../state/app-provider';
+import * as failedMoves from '../state/failed-moves';
 import { defaultSavedGames, defaultSavedSnapshots, defaultSettings } from '../state/types';
 import type { CardStack, DragPayload } from './shared/card-stack';
 import { SpiderGameScreen } from './spider-game-screen';
@@ -24,7 +25,8 @@ vi.mock('./shared/card-stack', () => ({
     if (props.onCardDragStart && props.cards[0]) stacks.set(props.cards[0].id, props);
     return <div>{props.cards.map((card, index) => (
       <button type="button" aria-label={card.id} key={card.id} onClick={() => {
-        if (props.onFaceUpCardPress) props.onFaceUpCardPress(index);
+        if ('faceUp' in card && !card.faceUp) props.onFaceDownCardPress?.(index);
+        else if (props.onFaceUpCardPress) props.onFaceUpCardPress(index);
         else props.onCardPress?.();
       }}>{card.id}</button>
     ))}</div>;
@@ -74,6 +76,7 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', clearTimeout);
   stacks.clear();
   saveGame.mockReset().mockResolvedValue(undefined);
+  vi.spyOn(failedMoves, 'recordFailedMove').mockImplementation(() => {});
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const left = this.textContent === 'spider-hearts-8' ? 100
       : this.textContent === 'spider-diamonds-7' ? 200 : 0;
@@ -102,6 +105,7 @@ it('cycles all legal hints, wraps, and leaves cards and history unchanged', () =
   expect(screen.getByRole('status').textContent).toContain('Hint 1 of 2:');
   expect(screen.getByRole('status').getAttribute('aria-live')).toBe('polite');
   expect(saveGame.mock.calls).toHaveLength(before);
+  expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
   expect(present()).toEqual(initial);
   expect(screen.getByRole('button', { name: 'Undo' }).getAttribute('aria-disabled')).toBe('true');
 });
@@ -216,4 +220,96 @@ it('cancels a gesture without moving cards or adding history', () => {
   expect(source().hiddenFromIndex).toBeUndefined();
   expect(saveGame.mock.calls).toHaveLength(before);
   expect(screen.getByRole('button', { name: 'Undo' }).getAttribute('aria-disabled')).toBe('true');
+  expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
+});
+
+it('explains and logs a mixed-suit run drag exactly once, without changing cards or undo history', () => {
+  const state = fixture();
+  state.tableau[0][1] = card('hearts', 6);
+  setSaved(state);
+  render(<SpiderGameScreen mode="resume" />);
+  const before = saveGame.mock.calls.length;
+  act(() => { source().onCardDragStart?.(0, payload(10)); });
+  act(() => { source().onCardDragEnd?.(0, payload(110)); vi.runAllTimers(); });
+  expect(screen.getByRole('status').textContent).toContain('descending run of the same suit');
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledTimes(1);
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
+    game: 'spider', interaction: 'drag', rejection: expect.objectContaining({ code: 'spider.run-suit-order' }),
+    attempt: { kind: 'move', source: { zone: 'tableau', pileIndex: 0, cardIndex: 0 }, destination: null },
+  }));
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(screen.getByRole('button', { name: 'Undo' }).getAttribute('aria-disabled')).toBe('true');
+});
+
+it('explains a face-down selection without revealing or changing the card', () => {
+  const state = fixture();
+  state.tableau[0][0].faceUp = false;
+  setSaved(state);
+  render(<SpiderGameScreen mode="resume" />);
+  const before = saveGame.mock.calls.length;
+  fireEvent.click(screen.getByLabelText('spider-spades-7'));
+  expect(screen.getByRole('status').textContent).toContain('Only face-up cards can move');
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    game: 'spider', interaction: 'press',
+    attempt: { kind: 'select', source: { zone: 'tableau', pileIndex: 0, cardIndex: 0 } },
+    rejection: expect.objectContaining({ code: 'spider.hidden-card' }),
+  }));
+  const entry = vi.mocked(failedMoves.recordFailedMove).mock.calls[0][0];
+  expect(JSON.stringify(entry.position)).not.toContain('"rank":7');
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(present().tableau[0][0].faceUp).toBe(false);
+  expect(stacks.get('spider-spades-7')?.selected).toBe(false);
+});
+
+it.each([110, 900])('explains rejected final drops at %s and records the actual destination', (releaseX) => {
+  render(<SpiderGameScreen mode="resume" />);
+  act(() => { vi.runAllTimers(); });
+  const before = saveGame.mock.calls.length;
+  act(() => { source().onCardDragStart?.(1, payload(10)); vi.runAllTimers(); });
+  act(() => { source().onCardDragEnd?.(1, payload(releaseX)); vi.runAllTimers(); });
+  expect(screen.getByRole('status').textContent).toContain(releaseX === 110 ? 'one rank higher' : 'Drop the cards');
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledTimes(1);
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
+    attempt: { kind: 'move', source: { zone: 'tableau', pileIndex: 0, cardIndex: 1 },
+      destination: releaseX === 110 ? { zone: 'tableau', pileIndex: 1 } : null },
+  }));
+  expect(saveGame.mock.calls).toHaveLength(before);
+});
+
+it('keeps a drag released on its own column silent', () => {
+  render(<SpiderGameScreen mode="resume" />);
+  act(() => { vi.runAllTimers(); });
+  act(() => { source().onCardDragStart?.(0, payload(10)); vi.runAllTimers(); });
+  act(() => { source().onCardDragEnd?.(0, payload(10)); vi.runAllTimers(); });
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
+});
+
+it('does not log ordinary selection switching, deselection, valid moves, or hints', () => {
+  render(<SpiderGameScreen mode="resume" />);
+  fireEvent.click(screen.getByLabelText('spider-spades-7'));
+  fireEvent.click(screen.getByLabelText('spider-clubs-13-0'));
+  expect(stacks.get('spider-clubs-13-0')?.selected).toBe(true);
+  fireEvent.click(screen.getByLabelText('spider-clubs-13-0'));
+  expect(stacks.get('spider-clubs-13-0')?.selected).toBe(false);
+  fireEvent.click(screen.getByLabelText('spider-spades-7'));
+  fireEvent.click(screen.getByLabelText('spider-hearts-8'));
+  hint();
+  expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
+});
+
+it.each([9, 10])('explains why dealing %s stock cards is blocked', (count) => {
+  const state = fixture();
+  state.stock = createDeck('stock').slice(0, count);
+  if (count === 10) state.tableau[9] = [];
+  setSaved(state);
+  render(<SpiderGameScreen mode="resume" />);
+  const before = saveGame.mock.calls.length;
+  fireEvent.click(screen.getByLabelText(state.stock.at(-1)!.id));
+  expect(screen.getByRole('status').textContent).toContain(count === 9 ? 'ten stock cards' : 'Fill every empty');
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
+    game: 'spider', interaction: 'press', attempt: { kind: 'deal', source: { zone: 'stock' } },
+    rejection: expect.objectContaining({ code: count === 9 ? 'spider.stock-row' : 'spider.empty-column' }),
+  }));
+  expect(saveGame.mock.calls).toHaveLength(before);
 });

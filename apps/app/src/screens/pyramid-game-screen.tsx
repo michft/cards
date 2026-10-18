@@ -20,6 +20,7 @@ import { palette, radius, spacing, typography } from '../theme';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack } from './shared/card-stack';
 import { useCardDrag } from './shared/use-card-drag';
+import { MoveFeedback, useMoveFeedback } from './shared/use-move-feedback';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
@@ -49,6 +50,7 @@ export function PyramidGameScreen({ mode }: Props) {
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<PyramidSource | null>(null);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
+  const feedback = useMoveFeedback('pyramid', history.present);
   const availableWidth = Math.max(320, width - spacing.lg * 2);
   const cardWidth = Math.max(44, Math.min(74, availableWidth / 9.5));
   const pyramidRowGap = Math.max(4, Math.round(cardWidth * 0.08));
@@ -86,14 +88,20 @@ export function PyramidGameScreen({ mode }: Props) {
       return candidates.filter((destination) => !isSameSource(source, destination)
         && removePyramidCards(history.present, [source, destination]) !== history.present);
     },
-    onStart: () => setSelectedSource(null),
+    onStart: () => { feedback.clear(); setSelectedSource(null); },
+    onCancel: feedback.clear,
     onDrop(source, destination) {
       const next = removePyramidCards(history.present, [source, destination]);
       if (next !== history.present) commit(next);
     },
+    onReject(source, destination) {
+      if (destination && isSameSource(source, destination)) return;
+      rejectRemoval(source, destination, 'drag');
+    },
   });
 
   function clearInteraction() {
+    feedback.clear();
     cardDrag.cancel();
     setGameMenuOpen(false);
     setSelectedSource(null);
@@ -174,6 +182,10 @@ export function PyramidGameScreen({ mode }: Props) {
   }
 
   function handleDrawOrRecycle() {
+    if (history.present.won) {
+      feedback.reject('game-finished', 'This pyramid is complete. Undo a move or start a new game.', { kind: 'draw' });
+      return;
+    }
     if (history.present.stock.length > 0) {
       const next = drawPyramidStock(history.present);
 
@@ -185,6 +197,11 @@ export function PyramidGameScreen({ mode }: Props) {
     }
 
     if (!canRecycle) {
+      feedback.reject(history.present.waste.length ? 'recycle-limit' : 'stock-empty',
+        history.present.waste.length
+          ? `No stock passes remain. This game allows ${history.present.maxRecycles} waste recycles.`
+          : 'The stock and waste are empty. Pair cards remaining in the pyramid.',
+        { kind: 'recycle' });
       return;
     }
 
@@ -196,11 +213,18 @@ export function PyramidGameScreen({ mode }: Props) {
   }
 
   function handleSourcePress(source: PyramidSource) {
+    if (source.zone === 'tableau' && !history.present.tableau[source.rowIndex]?.[source.cardIndex]) return;
+    if (history.present.won) {
+      rejectRemoval(source, null);
+      return;
+    }
     if (!isPyramidSourceSelectable(history.present, source)) {
+      rejectRemoval(source, null);
       return;
     }
 
     if (isSameSource(selectedSource, source)) {
+      feedback.clear();
       setSelectedSource(null);
       return;
     }
@@ -222,6 +246,7 @@ export function PyramidGameScreen({ mode }: Props) {
     }
 
     if (!selectedSource) {
+      feedback.clear();
       setSelectedSource(source);
       return;
     }
@@ -233,7 +258,30 @@ export function PyramidGameScreen({ mode }: Props) {
       return;
     }
 
+    rejectRemoval(selectedSource, source);
     setSelectedSource(source);
+  }
+
+  function rejectRemoval(source: PyramidSource, destination: PyramidSource | null, interaction: 'press' | 'drag' = 'press') {
+    const attempt = { kind: 'remove' as const, source, destination };
+    const sourceCard = source.zone === 'waste' ? history.present.waste.at(-1)
+      : history.present.tableau[source.rowIndex]?.[source.cardIndex];
+    const destinationCard = destination?.zone === 'waste' ? history.present.waste.at(-1)
+      : destination?.zone === 'tableau' ? history.present.tableau[destination.rowIndex]?.[destination.cardIndex] : null;
+    if (history.present.won) {
+      feedback.reject('game-finished', 'This pyramid is complete. Undo a move or start a new game.', attempt, interaction);
+    } else if (!isPyramidSourceSelectable(history.present, source)
+      || (destinationCard && destination && !isPyramidSourceSelectable(history.present, destination))) {
+      feedback.reject('card-covered', 'Remove the cards covering this card first. A parent may pair with its one remaining exposed child only when they total 13.', attempt, interaction);
+    } else if (sourceCard?.rank === 13 || destinationCard?.rank === 13) {
+      feedback.reject('king-alone', 'Remove a King on its own by tapping it. Kings cannot form a pair.', attempt, interaction);
+    } else if (!destinationCard) {
+      feedback.reject('pair-required', 'Choose another available card so the pair totals 13. Only a King can be removed alone.', attempt, interaction);
+    } else if (sourceCard && sourceCard.rank + destinationCard.rank !== 13) {
+      feedback.reject('pair-total', `These cards total ${sourceCard.rank + destinationCard.rank}. A pair must total 13; only a King is removed alone.`, attempt, interaction);
+    } else {
+      feedback.reject('card-covered', 'Remove the cards covering this pair first. A covered parent can only pair with its one remaining exposed child.', attempt, interaction);
+    }
   }
 
   return (
@@ -384,6 +432,7 @@ export function PyramidGameScreen({ mode }: Props) {
           ) : null}
 
           {history.present.won ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
+          <MoveFeedback feedback={feedback} />
 
           <ScrollView
             scrollEnabled={!cardDrag.drag}
@@ -395,6 +444,7 @@ export function PyramidGameScreen({ mode }: Props) {
             <View style={[styles.board, { minWidth: boardMinWidth }]}>
               <View style={styles.topRow}>
                 <CardStack
+                  accessibilityLabel="Stock: draw or recycle"
                   cardWidth={cardWidth}
                   cards={history.present.stock.slice(-1)}
                   emptyState={stockCount === 0 && canRecycle ? 'recycle' : 'default'}
@@ -445,9 +495,6 @@ export function PyramidGameScreen({ mode }: Props) {
                   >
                     {row.map((card, cardIndex) => {
                       const source: PyramidSource = { zone: 'tableau', rowIndex, cardIndex };
-                      const selectable = card !== null
-                        && isPyramidSourceSelectable(history.present, source);
-
                       return (
                         <View
                           key={`pyramid-cell-${rowIndex}-${cardIndex}`}
@@ -464,12 +511,11 @@ export function PyramidGameScreen({ mode }: Props) {
                               cardWidth={cardWidth}
                               cards={[card]}
                               hiddenFromIndex={isSameSource(cardDrag.drag?.source ?? null, source) ? 0 : undefined}
-                              onCardDragStart={selectable
-                                ? (_, payload) => cardDrag.start(source, payload) : undefined}
+                              onCardDragStart={(_, payload) => cardDrag.start(source, payload)}
                               onCardDragMove={(_, payload) => cardDrag.move(payload)}
                               onCardDragEnd={(_, payload) => cardDrag.end(payload)}
                               onCardDragCancel={cardDrag.cancel}
-                              onCardPress={selectable ? () => handleSourcePress(source) : undefined}
+                              onCardPress={() => handleSourcePress(source)}
                               placeholderLabel=""
                               selected={isSameSource(selectedSource, source)}
                             />

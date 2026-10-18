@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { useEffect } from 'react';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createDeck } from '@mumscards/engine-core';
 import { createFreeCellGame, type FreeCellState } from '@mumscards/game-freecell';
@@ -8,6 +8,7 @@ import type { useAppModel } from '../state/app-provider';
 import { defaultSavedGames, defaultSavedSnapshots, defaultSettings } from '../state/types';
 import type { CardStack, DragPayload } from './shared/card-stack';
 import { FreeCellGameScreen } from './freecell-game-screen';
+import * as failedMoves from '../state/failed-moves';
 
 type AppModel = ReturnType<typeof useAppModel>;
 let model: AppModel;
@@ -23,7 +24,7 @@ vi.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 vi.mock('./shared/card-stack', () => ({
   CardStack: (props: ComponentProps<typeof CardStack>) => {
     if (props.onCardDragStart && props.cards[0]) stacks.set(props.cards[0].id, props);
-    return <div>{props.cards.length ? props.cards.map((card) => <span key={card.id}>{card.id}</span>) : props.placeholderLabel}</div>;
+    return <div onClick={() => props.onCardPress?.()}>{props.cards.length ? props.cards.map((card) => <span key={card.id}>{card.id}</span>) : props.placeholderLabel}</div>;
   },
 }));
 
@@ -47,6 +48,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   stacks.clear();
   saveGame.mockReset().mockResolvedValue(undefined);
+  vi.spyOn(failedMoves, 'recordFailedMove').mockImplementation(() => {});
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => setTimeout(() => callback(0), 0));
   vi.stubGlobal('cancelAnimationFrame', clearTimeout);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
@@ -87,9 +89,11 @@ it.each([210, 900])('moves the exact selected run and uses final release at %s r
   if (releaseX === 210) {
     expect(present().tableau[1].map((card) => card.rank)).toEqual([8]);
     expect(present().tableau[2].map((card) => card.rank)).toEqual([8, 7, 6]);
+    expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
   } else {
     expect(saveGame.mock.calls).toHaveLength(before);
     expect(present().tableau[0].map((card) => card.rank)).toEqual([7, 6]);
+    expect(failedMoves.recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({ interaction: 'drag', rejection: expect.objectContaining({ code: 'drop-target' }) }));
   }
 });
 
@@ -101,6 +105,9 @@ it('rejects dragging a multi-card run to a free cell without adding history', ()
   act(() => { source().onCardDragEnd?.(0, payload(-90)); vi.runAllTimers(); });
   expect(saveGame.mock.calls).toHaveLength(before);
   expect(present().freeCells).toEqual([null, null, null, null]);
+  expect(screen.getByRole('status').textContent).toContain('A free cell holds one card');
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledTimes(1);
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({ game: 'freecell', rejection: expect.objectContaining({ code: 'cell-single' }) }));
 });
 
 it('clears a cancelled drag without changing the saved deal', () => {
@@ -113,6 +120,7 @@ it('clears a cancelled drag without changing the saved deal', () => {
   expect(source().hiddenFromIndex).toBeUndefined();
   expect(source().selected).toBe(false);
   expect(saveGame.mock.calls).toHaveLength(before);
+  expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
 });
 
 it('moves a single dragged tableau card into an empty free cell', () => {
@@ -122,6 +130,7 @@ it('moves a single dragged tableau card into an empty free cell', () => {
   act(() => { source().onCardDragEnd?.(1, payload(-90)); vi.runAllTimers(); });
   expect(present().freeCells[0]?.rank).toBe(6);
   expect(present().tableau[0].map((card) => card.rank)).toEqual([7]);
+  expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
 });
 
 it('drags a free-cell Ace to its foundation', () => {
@@ -141,4 +150,35 @@ it('drags a free-cell Ace to its foundation', () => {
   act(() => { cell().onCardDragEnd?.(0, payload(310)); vi.runAllTimers(); });
   expect(present().freeCells[0]).toBeNull();
   expect(present().foundations[0].map((card) => card.id)).toEqual([ace.id]);
+  expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
+});
+
+it('explains an unambiguous foundation tap without recording source selection', () => {
+  render(<FreeCellGameScreen mode="resume" />);
+  act(() => { source().onFaceUpCardPress?.(0); });
+  expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
+  const before = saveGame.mock.calls.length;
+  fireEvent.click(screen.getAllByText('A')[0]);
+  expect(screen.getByRole('status').textContent).toBe('Move one card at a time to a foundation.');
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(failedMoves.recordFailedMove).toHaveBeenCalledTimes(1);
+});
+
+it('switches source selection silently when a tapped card cannot accept the first selection', () => {
+  const saved = model.saves.freecell;
+  if (!saved) throw new Error('Missing saved deal');
+  const deck = createDeck('drag');
+  const nine = deck.find((card) => card.suit === 'clubs' && card.rank === 9);
+  const ten = deck.find((card) => card.suit === 'hearts' && card.rank === 10);
+  if (!nine || !ten) throw new Error('Missing fixture cards');
+  saved.state.tableau[1] = [nine];
+  saved.state.tableau[2] = [ten];
+  render(<FreeCellGameScreen mode="resume" />);
+  act(() => { source().onFaceUpCardPress?.(0); });
+  act(() => { stacks.get(nine.id)?.onFaceUpCardPress?.(0); });
+  expect(stacks.get(nine.id)?.selected).toBe(true);
+  expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
+  act(() => { stacks.get(ten.id)?.onFaceUpCardPress?.(0); });
+  expect(present().tableau[2].map((card) => card.rank)).toEqual([10, 9]);
+  expect(failedMoves.recordFailedMove).not.toHaveBeenCalled();
 });

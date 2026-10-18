@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
+import { FailedMoveLogPanel } from './failed-move-log-panel';
 
 const hintModes: Array<{ value: KlondikeHintMode; label: string; description: string }> = [
   {
@@ -455,6 +456,7 @@ export function SettingsScreen() {
               })}
             </>
           )}
+          <FailedMoveLogPanel />
         </View>
       </ScrollView>
     </SafeAreaView>

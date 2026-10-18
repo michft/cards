@@ -35,6 +35,8 @@ import { createGameHistory as createHistoryState, persistGameHistory, restoreGam
 import { CardStack, type DragPayload as DragGesturePayload } from './shared/card-stack';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { isEditableTarget, useWebGameShortcuts } from './shared/use-web-game-shortcuts';
+import { MoveFeedback, useMoveFeedback } from './shared/use-move-feedback';
+import { getKlondikeRejection } from './shared/move-rejection-reasons';
 
 type HistoryState = GameHistory<KlondikeState>;
 
@@ -79,6 +81,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     mode === 'resume' && savedGame ? restoreGameHistory(savedGame) : createHistoryState(createNewGame()),
   );
   const emptyTableauPolicy = history.present.emptyTableauPolicy ?? 'any';
+  const feedback = useMoveFeedback('klondike', history.present);
   const [selectedSource, setSelectedSource] = useState<KlondikeSource | null>(null);
   const [selectedAtMs, setSelectedAtMs] = useState<number | null>(null);
   const [hintText, setHintText] = useState<string | null>(null);
@@ -268,6 +271,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
   }, [history.present, offloadActive, emptyTableauPolicy]);
 
   function clearInteractionState() {
+    feedback.clear();
     setSelectedSource(null);
     setSelectedAtMs(null);
     setHintText(null);
@@ -359,6 +363,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 
   function draw() {
     if (history.present.stock.length === 0 && history.present.waste.length === 0) {
+      feedback.reject('stock-empty', 'There are no cards in the stock or waste to draw or recycle.', { kind: 'draw' });
       return;
     }
 
@@ -387,7 +392,8 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     setHintCycleIndex((current) => (current + 1) % hints.length);
   }
 
-  function handleMove(source: KlondikeSource, destination: KlondikeDestination) {
+  function handleMove(source: KlondikeSource, destination: KlondikeDestination, interaction: 'press' | 'drag' = 'press') {
+    if (source.zone !== 'waste' && source.zone === destination.zone && source.pileIndex === destination.pileIndex) return;
     setOffloadActive(false);
     const next = applyKlondikeMove(
       history.present,
@@ -400,6 +406,8 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     );
 
     if (JSON.stringify(next) === JSON.stringify(history.present)) {
+      const reason = getKlondikeRejection(history.present, source, destination);
+      if (reason) feedback.reject(reason.code, reason.message, { kind: 'move', source, destination }, interaction);
       return;
     }
 
@@ -426,6 +434,8 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     }
 
     if (legalDestinations.length === 0) {
+      const reason = getKlondikeRejection(history.present, source, null);
+      if (reason) feedback.reject(reason.code, reason.message, { kind: 'select', source });
       return;
     }
 
@@ -466,7 +476,9 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     );
     const cards = getDragCards(history.present, source);
 
-    if (cards.length === 0 || legalDestinations.length === 0) {
+    if (cards.length === 0) {
+      const reason = getKlondikeRejection(history.present, source, null);
+      if (reason) feedback.reject(reason.code, reason.message, { kind: 'move', source, destination: null }, 'drag');
       return;
     }
 
@@ -526,7 +538,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 
     const destination = findDestinationAtPoint(
       zoneMeasurements,
-      currentDrag.legalDestinations,
+      Object.values(zoneMeasurements).map((measurement) => measurement.destination),
       payload.pageX,
       payload.pageY,
     );
@@ -534,11 +546,13 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     setDragState(null);
 
     if (destination) {
-      handleMove(currentDrag.source, destination);
+      handleMove(currentDrag.source, destination, 'drag');
       return;
     }
 
     setSelectedSource(null);
+    setSelectedAtMs(null);
+    feedback.reject('drop-target', 'Drop the card on a tableau column or foundation.', { kind: 'move', source: currentDrag.source, destination: null }, 'drag');
   }
 
   function toggleOffload() {
@@ -674,6 +688,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
         </View>
       ) : null}
 
+      <MoveFeedback feedback={feedback} />
       {hintText ? <Text style={styles.hintText}>{hintText}</Text> : null}
       {history.present.completed ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
 
@@ -815,6 +830,11 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                     ? () => handleDestinationPress({ zone: 'tableau', pileIndex })
                     : (cardIndex) => handleSourcePress({ zone: 'tableau', pileIndex, cardIndex })
                 }
+                onFaceDownCardPress={(cardIndex) => {
+                  const source: KlondikeSource = { zone: 'tableau', pileIndex, cardIndex };
+                  const reason = getKlondikeRejection(history.present, source, null);
+                  if (reason) feedback.reject(reason.code, reason.message, { kind: 'select', source });
+                }}
                 onCardHoldEnd={() => {
                   setExpandedTableauPile((current) => (current === pileIndex ? null : current));
                 }}

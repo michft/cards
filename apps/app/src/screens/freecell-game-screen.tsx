@@ -20,6 +20,8 @@ import { CardStack } from './shared/card-stack';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 import { useCardDrag } from './shared/use-card-drag';
+import { MoveFeedback, useMoveFeedback } from './shared/use-move-feedback';
+import { getFreeCellRejection } from './shared/move-rejection-reasons';
 
 type HistoryState = GameHistory<FreeCellState>;
 
@@ -46,6 +48,7 @@ export function FreeCellGameScreen({ mode }: Props) {
       : createHistoryState(createFreeCellGame(Math.random, { tableauBuildPolicy: settings.freeCellTableauBuildPolicy })),
   );
   const tableauBuildPolicy = history.present.tableauBuildPolicy ?? 'alternate-red-black';
+  const feedback = useMoveFeedback('freecell', history.present);
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<FreeCellSource | null>(null);
   const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
@@ -69,6 +72,16 @@ export function FreeCellGameScreen({ mode }: Props) {
     onDrop: (source, destination) => {
       const next = applyFreeCellMove(history.present, source, destination, { tableauBuildPolicy });
       if (JSON.stringify(next) !== JSON.stringify(history.present)) commit(next);
+    },
+    onReject: (source, destination) => {
+      if (destination && ((source.zone === 'tableau' && destination.zone === 'tableau' && source.pileIndex === destination.pileIndex)
+        || (source.zone === 'cell' && destination.zone === 'cell' && source.cellIndex === destination.cellIndex))) return;
+      const reason = getFreeCellRejection(history.present, source, destination);
+      if (destination || reason?.code !== 'source-blocked') {
+        if (reason) feedback.reject(reason.code, reason.message, { kind: 'move', source, destination }, 'drag');
+      } else {
+        feedback.reject('drop-target', 'Drop the card on a tableau column, free cell or foundation.', { kind: 'move', source, destination: null }, 'drag');
+      }
     },
     onStart: (source) => {
       setOffloadActive(false);
@@ -146,6 +159,7 @@ export function FreeCellGameScreen({ mode }: Props) {
   }, [history.present, offloadActive, tableauBuildPolicy]);
 
   function clearInteraction() {
+    feedback.clear();
     cardDrag.cancel();
     setOffloadActive(false);
     setGameMenuOpen(false);
@@ -237,13 +251,17 @@ export function FreeCellGameScreen({ mode }: Props) {
     }
 
     if (!canMoveFreeCellSource(history.present, source, tableauBuildPolicy)) {
+      if (!selectedSource) {
+        const reason = getFreeCellRejection(history.present, source, null);
+        if (reason) feedback.reject(reason.code, reason.message, { kind: 'select', source });
+      }
       return;
     }
 
     setSelectedSource(source);
   }
 
-  function handleDestinationPress(destination: FreeCellDestination): boolean {
+  function handleDestinationPress(destination: FreeCellDestination, reportFailure = true): boolean {
     if (!selectedSource) {
       return false;
     }
@@ -265,6 +283,10 @@ export function FreeCellGameScreen({ mode }: Props) {
     });
 
     if (JSON.stringify(next) === JSON.stringify(history.present)) {
+      if (reportFailure) {
+        const reason = getFreeCellRejection(history.present, selectedSource, destination);
+        if (reason) feedback.reject(reason.code, reason.message, { kind: 'move', source: selectedSource, destination });
+      }
       return false;
     }
 
@@ -420,6 +442,7 @@ export function FreeCellGameScreen({ mode }: Props) {
             </Pressable>
           </View>
 
+          <MoveFeedback feedback={feedback} />
           {hintText ? <Text style={styles.hintText}>{hintText}</Text> : null}
 
           {settings.freeCellDebugTools && snapshotPickerOpen ? (
@@ -481,7 +504,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                       onCardPress={
                         card || selectedSource
                           ? () => {
-                              if (selectedSource && handleDestinationPress({ zone: 'cell', cellIndex })) return;
+                              if (selectedSource && handleDestinationPress({ zone: 'cell', cellIndex }, !card)) return;
                               if (card) handleSourcePress({ zone: 'cell', cellIndex });
                             }
                           : undefined
@@ -541,7 +564,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                           handleSourcePress({ zone: 'tableau', pileIndex, cardIndex });
                           return;
                         }
-                        if (selectedSource && handleDestinationPress({ zone: 'tableau', pileIndex })) return;
+                        if (selectedSource && handleDestinationPress({ zone: 'tableau', pileIndex }, false)) return;
 
                         handleSourcePress({ zone: 'tableau', pileIndex, cardIndex });
                       }}

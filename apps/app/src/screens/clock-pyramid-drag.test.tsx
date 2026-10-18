@@ -1,12 +1,13 @@
 import type { ComponentProps } from 'react';
 import { useEffect } from 'react';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createDeck, type PlayingCard } from '@mumscards/engine-core';
 import { createClockGame, type ClockState } from '@mumscards/game-clock';
 import { createPyramidGame, type PyramidState } from '@mumscards/game-pyramid';
 
 import type { useAppModel } from '../state/app-provider';
+import { recordFailedMove } from '../state/failed-moves';
 import { defaultSavedGames, defaultSavedSnapshots, defaultSettings } from '../state/types';
 import type { CardStack, DragPayload } from './shared/card-stack';
 import { ClockGameScreen } from './clock-game-screen';
@@ -16,9 +17,13 @@ type AppModel = ReturnType<typeof useAppModel>;
 let model: AppModel;
 const saveGame = vi.fn<AppModel['saveGame']>();
 const stacks = new Map<string, ComponentProps<typeof CardStack>>();
+let emptyStockPress: (() => void) | undefined;
 const deck = createDeck('drag');
 
 vi.mock('../state/app-provider', () => ({ useAppModel: () => model }));
+vi.mock('../state/failed-moves', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../state/failed-moves')>(), recordFailedMove: vi.fn(),
+}));
 vi.mock('expo-router', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useFocusEffect: (callback: () => void | (() => void)) => useEffect(callback, [callback]),
@@ -26,6 +31,7 @@ vi.mock('expo-router', () => ({
 vi.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 vi.mock('./shared/card-stack', () => ({
   CardStack: (props: ComponentProps<typeof CardStack>) => {
+    if (props.variant === 'back' && props.cards.length === 0) emptyStockPress = props.onCardPress;
     if (props.onCardPress || props.onCardDragStart) {
       for (const card of props.cards) stacks.set(card.id, props);
     }
@@ -95,13 +101,15 @@ function pyramid(): PyramidState {
 beforeEach(() => {
   vi.useFakeTimers();
   stacks.clear();
+  emptyStockPress = undefined;
+  vi.mocked(recordFailedMove).mockClear();
   saveGame.mockReset().mockResolvedValue(undefined);
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => setTimeout(() => callback(0), 0));
   vi.stubGlobal('cancelAnimationFrame', clearTimeout);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const key = this.getAttribute('data-testid');
     const left = key === 'clock-hour-5' || key === 'pyramid-cell-6-1' || key === 'pyramid-waste'
-      ? 100 : key === 'clock-stock-2' || key === 'pyramid-cell-6-2' ? 200 : 0;
+      ? 100 : key === 'clock-stock-2' || key === 'pyramid-cell-6-2' ? 200 : key === 'clock-hour-1' ? 300 : 0;
     return { x: left, y: 0, left, top: 0, right: left + 50, bottom: 70, width: 50, height: 70, toJSON() {} };
   });
   model = {
@@ -161,6 +169,10 @@ it('rejects a Pyramid non-pair at final release instead of using the prior highl
   const before = saveGame.mock.calls.length;
   drag(7, 210);
   expect(saveGame.mock.calls).toHaveLength(before);
+  expect(screen.getByRole('status').textContent).toContain('cards total 16');
+  expect(recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
+    game: 'pyramid', interaction: 'drag', rejection: expect.objectContaining({ code: 'pair-total' }),
+  }));
 });
 
 it('pairs a Pyramid tableau card with the waste by dragging', () => {
@@ -185,6 +197,7 @@ it('preserves legal Pyramid half-blocked parent and child pairing', () => {
   if (next.gameId !== 'pyramid') throw new Error('Unexpected saved game');
   expect(next.tableau[5][0]).toBeNull();
   expect(next.tableau[6][1]).toBeNull();
+  expect(recordFailedMove).not.toHaveBeenCalled();
 });
 
 it('keeps Pyramid King removal available by tapping', () => {
@@ -196,6 +209,7 @@ it('keeps Pyramid King removal available by tapping', () => {
   if (next.gameId !== 'pyramid') throw new Error('Unexpected saved game');
   expect(next.tableau[6][0]).toBeNull();
   expect(next.removedCount).toBe(1);
+  expect(recordFailedMove).not.toHaveBeenCalled();
 });
 
 it('rejects a Clock King dropped on another stock pile', () => {
@@ -203,6 +217,10 @@ it('rejects a Clock King dropped on another stock pile', () => {
   const before = saveGame.mock.calls.length;
   drag(13, 10);
   expect(saveGame.mock.calls).toHaveLength(before);
+  expect(screen.getByRole('status').textContent).toContain('original stock pile (3)');
+  expect(recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
+    game: 'clock', interaction: 'drag', rejection: expect.objectContaining({ code: 'king-origin' }),
+  }));
 });
 
 it('pairs the Pyramid waste with a legal tableau partner by dragging', () => {
@@ -227,4 +245,100 @@ it.each(['clock', 'pyramid'])('restores %s card visibility when the gesture is c
   act(() => { source(rank).onCardDragCancel?.(); });
   expect(source(rank).hiddenFromIndex).toBeUndefined();
   expect(saveGame.mock.calls).toHaveLength(before);
+  expect(recordFailedMove).not.toHaveBeenCalled();
+});
+
+it('explains a Clock wrong-hour tap and keeps the same deal', () => {
+  resume(clock(5));
+  const before = saveGame.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: '8 hour' }));
+  expect(screen.getByRole('status').textContent).toContain('active 5 on the 5 hour');
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
+    game: 'clock', interaction: 'press', attempt: expect.objectContaining({ destination: { zone: 'hour', hourIndex: 8 } }),
+    rejection: expect.objectContaining({ code: 'matching-hour' }),
+  }));
+});
+
+it('treats releasing a Clock card at its origin as cancellation', () => {
+  resume(clock(5));
+  const before = saveGame.mock.calls.length;
+  drag(5, 310);
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(recordFailedMove).not.toHaveBeenCalled();
+  expect(screen.queryByRole('status')).toBeNull();
+});
+
+it('explains why another Clock stock cannot start during a chain', () => {
+  const state = clock(5);
+  state.stockPiles[0] = [card(9)];
+  resume(state);
+  act(() => { source(9).onCardPress?.(); });
+  expect(screen.getByRole('status').textContent).toContain('before drawing another stock card');
+  expect(recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
+    rejection: expect.objectContaining({ code: 'active-card-first' }),
+  }));
+});
+
+it('asks for a Clock stock draw when an hour is tapped without an active card', () => {
+  const state = clock(5);
+  state.activeCard = null;
+  state.activeSource = null;
+  state.activeStockPileIndex = null;
+  resume(state);
+  fireEvent.click(screen.getByRole('button', { name: '5 hour' }));
+  expect(screen.getByRole('status').textContent).toContain('Draw from an unfinished stock pile');
+  expect(recordFailedMove).toHaveBeenCalledTimes(1);
+});
+
+it('explains a wrong Pyramid pair, switches selection, and clears the explanation after a legal pair', () => {
+  const state = pyramid();
+  state.tableau[6][3] = card(4);
+  resume(state);
+  const before = saveGame.mock.calls.length;
+  act(() => { source(7).onCardPress?.(); });
+  expect(recordFailedMove).not.toHaveBeenCalled();
+  act(() => { source(9).onCardPress?.(); });
+  expect(screen.getByRole('status').textContent).toContain('cards total 16');
+  expect(source(9).selected).toBe(true);
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
+    game: 'pyramid', rejection: expect.objectContaining({ code: 'pair-total' }),
+  }));
+  act(() => { source(4).onCardPress?.(); });
+  expect(screen.queryByRole('status')).toBeNull();
+  const next = present();
+  if (next.gameId !== 'pyramid') throw new Error('Unexpected saved game');
+  expect(next.tableau[6].slice(2, 4)).toEqual([null, null]);
+  expect(recordFailedMove).toHaveBeenCalledTimes(1);
+});
+
+it('explains covered Pyramid cards without selecting them or changing history', () => {
+  const state = pyramid();
+  state.tableau[5][0] = card(8);
+  resume(state);
+  const before = saveGame.mock.calls.length;
+  act(() => { source(8).onCardPress?.(); });
+  expect(screen.getByRole('status').textContent).toContain('Remove the cards covering this card first');
+  expect(source(8).selected).toBe(false);
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
+    rejection: expect.objectContaining({ code: 'card-covered' }),
+  }));
+});
+
+it('explains the Pyramid recycle limit without creating an undo step', () => {
+  const state = pyramid();
+  state.stock = [];
+  state.waste = [card(8)];
+  state.recyclesUsed = state.maxRecycles;
+  resume(state);
+  const before = saveGame.mock.calls.length;
+  expect(emptyStockPress).toBeDefined();
+  act(() => { emptyStockPress?.(); });
+  expect(screen.getByRole('status').textContent).toContain('No stock passes remain');
+  expect(saveGame.mock.calls).toHaveLength(before);
+  expect(recordFailedMove).toHaveBeenCalledWith(expect.objectContaining({
+    rejection: expect.objectContaining({ code: 'recycle-limit' }),
+  }));
 });
