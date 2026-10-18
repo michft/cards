@@ -5,10 +5,11 @@ import { useRouter } from 'expo-router';
 import { createSpiderGame } from '@mumscards/game-spider';
 import type { SpiderState, SpiderTableauCard } from '@mumscards/game-spider';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
+import { useGameBoardSpace } from './shared/use-game-board-space';
 import { CardStack } from './shared/card-stack';
 import { useCardDrag } from './shared/use-card-drag';
 import { MoveFeedback, MoveHintOverlay, useMoveFeedback, type FailedMoveAttempt, type MoveSuggestion } from './shared/use-move-feedback';
@@ -28,7 +29,7 @@ type Props = {
 
 export function SpiderGameScreen({ mode }: Props) {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const boardSpace = useGameBoardSpace();
   const { hydrated, saves, saveGame, clearGame, settings, snapshots, saveSnapshot, deleteSnapshot } = useAppModel();
   const savedGame = saves.spider;
   const [history, setHistory] = useState<HistoryState>(() =>
@@ -43,10 +44,30 @@ export function SpiderGameScreen({ mode }: Props) {
   const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const [hintCursor, setHintCursor] = useState<{ state: SpiderState; index: number } | null>(null);
-  const availableWidth = Math.max(320, width - spacing.lg * 2);
-  const cardWidth = Math.max(46, Math.min(72, availableWidth / 11.4));
-  const rowGap = spacing.sm;
-  const boardMinWidth = cardWidth * 10 + rowGap * 9;
+  const [stockMetaHeight, setStockMetaHeight] = useState(50);
+  const inlineStock = boardSpace.width >= 760;
+  const headerGap = spacing.lg;
+  const stockMetaWidth = 140;
+  const fanSpace = Math.min(
+    Math.max(...history.present.tableau.map((pile) => pile.slice(0, -1).reduce((sum, card) => sum + (card.faceUp ? 14 : 4), 0))),
+    Math.max(0, (boardSpace.height - headerGap * (inlineStock ? 1 : 2) - stockMetaHeight) / 2),
+  );
+  const cardWidth = Math.max(1, Math.floor(Math.min(72,
+    (boardSpace.width - spacing.sm * 9) / 10,
+    ...(inlineStock ? [
+      (boardSpace.width - stockMetaWidth - spacing.md - headerGap - spacing.sm * 7) / 9,
+      (boardSpace.height - headerGap - fanSpace) / (1.42 * 2),
+      (boardSpace.height - headerGap - stockMetaHeight - fanSpace) / 1.42,
+    ] : [
+      (boardSpace.height - headerGap * 2 - fanSpace) / (1.42 * 3),
+      (boardSpace.height - headerGap * 2 - stockMetaHeight - fanSpace) / (1.42 * 2),
+    ]),
+  )));
+  const cardHeight = Math.round(cardWidth * 1.42);
+  const headerHeight = inlineStock
+    ? Math.max(cardHeight, stockMetaHeight)
+    : Math.max(cardHeight, stockMetaHeight) + headerGap + cardHeight;
+  const tableauMaxHeight = Math.max(cardHeight, boardSpace.height - headerHeight - headerGap);
   const suitModeLabel = getSpiderSuitModeLabel(history.present.suitMode);
   const won = history.present.completedRuns >= 8;
   const suggestions = useMemo(() => getSpiderSuggestions(history.present), [history.present]);
@@ -301,6 +322,8 @@ export function SpiderGameScreen({ mode }: Props) {
     commit(next);
   }
 
+  const dragFrame = cardDrag.drag ? boardSpace.fitDrag(cardDrag.drag.x, cardDrag.drag.y, cardWidth) : null;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View ref={cardDrag.rootRef} onLayout={cardDrag.measureTargets} style={styles.screen}>
@@ -504,8 +527,9 @@ export function SpiderGameScreen({ mode }: Props) {
               ))}
             </View>
           ) : null}
-          <ScrollView horizontal contentContainerStyle={styles.horizontalBoardContent} showsHorizontalScrollIndicator={false} scrollEnabled={!cardDrag.drag} onScroll={cardDrag.measureTargets} scrollEventThrottle={16}>
-            <View testID="game-board" style={[styles.board, { minWidth: boardMinWidth }]}>
+          <View ref={boardSpace.ref} onLayout={boardSpace.onLayout}>
+            <View testID="game-board" style={[styles.board, { width: boardSpace.width }]}>
+              <View style={[styles.boardHeader, inlineStock && styles.boardHeaderInline]}>
               <View style={styles.stockRow}>
                 <View>
                   <CardStack
@@ -517,7 +541,10 @@ export function SpiderGameScreen({ mode }: Props) {
                   />
                   <MoveHintOverlay feedback={feedback} target="stock" />
                 </View>
-                <View style={styles.stockMeta}>
+                <View style={[styles.stockMeta, { width: stockMetaWidth }]} onLayout={(event) => {
+                  const nextHeight = event.nativeEvent.layout.height;
+                  setStockMetaHeight((current) => Math.abs(current - nextHeight) < 1 ? current : nextHeight);
+                }}>
                   <Text style={styles.copy}>Stock: {history.present.stock.length}</Text>
                   <Text style={styles.copy}>Runs complete: {history.present.completedRuns}</Text>
                 </View>
@@ -536,12 +563,14 @@ export function SpiderGameScreen({ mode }: Props) {
                   );
                 })}
               </View>
+              </View>
               <View style={styles.tableauRow}>
                 {history.present.tableau.map((pile, pileIndex) => (
                   <View
                     ref={cardDrag.registerTarget(`spider-tableau-${pileIndex}`, pileIndex)}
                     onLayout={cardDrag.measureTargets}
                     key={`spider-tableau-${pileIndex}`}
+                    testID={`game-tableau-${pileIndex}`}
                     style={[
                       styles.tableauTarget,
                       cardDrag.drag?.destinations.includes(pileIndex) && styles.legalDrop,
@@ -550,6 +579,7 @@ export function SpiderGameScreen({ mode }: Props) {
                   >
                     <CardStack
                       cardWidth={cardWidth}
+                      maxHeight={tableauMaxHeight}
                       cards={pile}
                       expanded={expandedTableauPile === pileIndex}
                       hiddenFromIndex={cardDrag.drag?.source.pileIndex === pileIndex ? cardDrag.drag.source.cardIndex : undefined}
@@ -582,17 +612,17 @@ export function SpiderGameScreen({ mode }: Props) {
                 ))}
               </View>
             </View>
-          </ScrollView>
+          </View>
         </ScrollView>
         <MoveFeedback feedback={feedback} />
-        {cardDrag.drag ? (
-          <View pointerEvents="none" style={styles.dragOverlay}>
+        {cardDrag.drag && dragFrame ? (
+          <View testID="drag-preview" pointerEvents="none" style={styles.dragOverlay}>
             <View style={[styles.dragGhost, {
-              left: cardDrag.drag.x - cardDrag.rootOffset.x,
-              top: cardDrag.drag.y - cardDrag.rootOffset.y,
+              left: dragFrame.left - cardDrag.rootOffset.x,
+              top: dragFrame.top - cardDrag.rootOffset.y,
               width: cardWidth,
             }]}>
-              <CardStack cardWidth={cardWidth} cards={cardDrag.drag.cards} placeholderLabel="" selected={cardDrag.drag.activeDestination !== null} />
+              <CardStack cardWidth={cardWidth} maxHeight={dragFrame.maxHeight} cards={cardDrag.drag.cards} placeholderLabel="" selected={cardDrag.drag.activeDestination !== null} />
             </View>
           </View>
         ) : null}
@@ -682,11 +712,15 @@ const styles = StyleSheet.create({
   switchButtonDisabled: {
     backgroundColor: palette.surfaceMuted,
   },
-  horizontalBoardContent: {
-    paddingBottom: spacing.sm,
-  },
   board: {
     gap: spacing.lg,
+  },
+  boardHeader: {
+    gap: spacing.lg,
+  },
+  boardHeaderInline: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
   stockRow: {
     flexDirection: 'row',

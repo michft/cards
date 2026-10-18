@@ -13,7 +13,7 @@ Clock, FreeCell, Klondike, Pyramid, Spider, Rules, and Settings are included. Ga
 
 Choose a game from its illustrated home-screen tile. During play, drag cards or runs onto legal destinations, or keep using taps. In Clock, drag the active card to its hour; Kings return to their original stock pile. In Pyramid, drag a card onto its partner; tap lone Kings to remove them. Invalid or interrupted drags leave the deal unchanged. In Spider, tap **Hint** again to see the next suggestion; changing the board starts the hint cycle over.
 
-Rotate the iPad to play in landscape. All five starting boards fit the 11-inch iPad, including a shorter viewport with browser controls visible. Pyramid puts its stock and waste beside the card rows; Clock sizes its circle to the available height and pile depth. Rotation keeps the deal and Undo/Redo history. Long tableau piles, expanded cards, explanations, and debug panels can still need scrolling.
+Rotate the iPad to play in landscape. All five boards use the measured space below the toolbar, including a shorter viewport with browser controls visible. Long tableau piles and held-open cards compress their spacing to fit; every card remains present. Card ranks adapt to exposed space, and dragged runs stay inside the screen. Pyramid chooses stock placement to fit its rows; Clock includes its full circle, fans, and labels. Explanations use reserved space below the board, with scrolling inside longer messages. Rotation keeps the deal and Undo/Redo history. Optional debug panels can still need scrolling.
 
 Keep the app's website data. Clearing it can erase saves and the offline copy; iPadOS can also evict website storage. If **Offline setup incomplete** appears, reconnect and choose **Retry offline setup** before relying on offline play again. Offline readiness confirms app files are available; it does not clear a separate save-error message.
 
@@ -52,7 +52,7 @@ pnpm web:build
 pnpm test:e2e:web
 ```
 
-Install the required test browsers with `pnpm exec playwright install chromium webkit` if missing. Browser checks target Chromium and WebKit at 11-inch iPad portrait and landscape sizes. Offline checks must include cold launches, all five games, Rules, Settings, saved progress, incomplete downloads, and cache recovery.
+Install the required test browsers with `pnpm exec playwright install chromium webkit` if missing. Browser checks target Chromium and WebKit at 11-inch iPad portrait and landscape sizes, plus smaller phone and split-screen viewports. `tests/web/board-fit.spec.ts` checks every board descendant, long saved piles, held-open cards, dragged runs, hints, explanations, and unchanged saves. Browser checks do not establish native or physical iPad acceptance. Offline checks must include cold launches, all five games, Rules, Settings, saved progress, incomplete downloads, and cache recovery.
 
 Playwright WebKit offline emulation can reject service-worker navigations with an internal error ([issue #42775](https://github.com/microsoft/playwright/issues/42775)). The offline tests stop their local server to check cached navigation without that emulation failure.
 
