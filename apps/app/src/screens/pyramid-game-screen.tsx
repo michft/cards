@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
@@ -32,7 +32,9 @@ type Props = {
 
 export function PyramidGameScreen({ mode }: Props) {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const landscape = width > height && width >= 900;
   const {
     clearGame,
     deleteSnapshot,
@@ -52,9 +54,13 @@ export function PyramidGameScreen({ mode }: Props) {
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const feedback = useMoveFeedback('pyramid', history.present);
   const availableWidth = Math.max(320, width - spacing.lg * 2);
-  const cardWidth = Math.max(44, Math.min(74, availableWidth / 9.5));
+  // Seven card rows with six overlaps; stock moves beside them on wide landscape screens.
+  const landscapeCardWidth = Math.floor((height - insets.top - insets.bottom - 160) / 8.62);
+  const cardWidth = Math.max(44, Math.min(74, availableWidth / 9.5,
+    landscape ? landscapeCardWidth : Infinity));
   const pyramidRowGap = Math.max(4, Math.round(cardWidth * 0.08));
-  const boardMinWidth = cardWidth * 7 + pyramidRowGap * 6 + spacing.lg;
+  const boardMinWidth = cardWidth * 7 + pyramidRowGap * 6 + spacing.lg
+    + (landscape ? 120 + spacing.lg : 0);
   const stockCount = history.present.stock.length;
   const canRecycle = stockCount === 0
     && history.present.waste.length > 0
@@ -441,8 +447,8 @@ export function PyramidGameScreen({ mode }: Props) {
             nestedScrollEnabled
             showsHorizontalScrollIndicator={false}
           >
-            <View style={[styles.board, { minWidth: boardMinWidth }]}>
-              <View style={styles.topRow}>
+            <View testID="game-board" style={[styles.board, landscape && styles.boardLandscape, { minWidth: boardMinWidth }]}>
+              <View style={[styles.topRow, landscape && styles.topRowLandscape]}>
                 <CardStack
                   accessibilityLabel="Stock: draw or recycle"
                   cardWidth={cardWidth}
@@ -707,10 +713,19 @@ const styles = StyleSheet.create({
   board: {
     gap: spacing.lg,
   },
+  boardLandscape: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
   topRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  topRowLandscape: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    minWidth: 120,
   },
   metaPanel: {
     gap: spacing.xs,

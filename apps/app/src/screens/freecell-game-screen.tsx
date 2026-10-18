@@ -484,7 +484,7 @@ export function FreeCellGameScreen({ mode }: Props) {
             nestedScrollEnabled
             showsHorizontalScrollIndicator={false}
           >
-            <View style={[styles.board, { minWidth: boardMinWidth }]}>
+            <View testID="game-board" style={[styles.board, { minWidth: boardMinWidth }]}>
               <View style={styles.topRow}>
                 {history.present.freeCells.map((card, cellIndex) => (
                   <View

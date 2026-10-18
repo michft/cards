@@ -698,7 +698,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
         nestedScrollEnabled
         showsHorizontalScrollIndicator={false}
       >
-        <View style={[styles.board, { minWidth: boardMinWidth }]}>
+        <View testID="game-board" style={[styles.board, { minWidth: boardMinWidth }]}>
         <View style={styles.topRow}>
           <Zone
             onPress={draw}
