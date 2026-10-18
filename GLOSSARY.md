@@ -15,7 +15,8 @@
 - **Save conflict:** Another tab changed the same saved game. Local changes are blocked from overwriting it; Load latest saves returns home and discards unsaved changes in this tab.
 - **Offline copy:** Complete, verified app files cached on the device for use without a network. Ready offline describes these files; saved game data is stored separately.
 - **Home Screen app:** The app opened from its installed iPad icon. It can use separate storage from Safari, so it needs its own online setup and Ready offline check.
-- **Game preview:** Decorative example layout on the home screen. It does not show or change a saved deal.
+- **Game preview:** Decorative example layout on home tiles and right-side game buttons. It does not show or change a saved deal.
+- **New-game image button:** Right-side illustrated control that starts a fresh deal of its named game. Games-menu links resume saved deals instead. Pyramid and Clock (Kings) are temporarily hidden from game choices; their saves remain intact.
 - **Drag move:** Explicitly move the dragged card or run to a legal destination at release. Invalid or interrupted drags do not change the deal.
 - **Hint cycle:** Repeated Hint taps show successive suggestions for the same position, then wrap. Changing the board resets the cycle.
 - **Move explanation:** Rule-specific feedback after an attempted action is rejected; it does not change the deal or history.

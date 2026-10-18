@@ -17,6 +17,8 @@ import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { useGameBoardSpace } from './shared/use-game-board-space';
+import { GameScreenLayout } from './shared/game-screen-layout';
+import { availableGames } from './shared/available-games';
 import { CardStack } from './shared/card-stack';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
@@ -347,6 +349,7 @@ export function FreeCellGameScreen({ mode }: Props) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <GameScreenLayout currentGame="freecell" onNew={startNewGame}>
       <View ref={cardDrag.rootRef} onLayout={cardDrag.measureTargets} style={styles.screen}>
         <View style={styles.floatingNavWrap}>
           <View style={styles.floatingNavRow}>
@@ -360,49 +363,20 @@ export function FreeCellGameScreen({ mode }: Props) {
           </View>
           {gameMenuOpen ? (
             <View style={styles.floatingGameMenu}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/clock?mode=resume');
-                }}
-                style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
-              >
-                <Text style={styles.actionButtonText}>Clock</Text>
-              </Pressable>
-              <View style={[styles.actionButton, styles.actionButtonActive]}>
-                <Text style={styles.actionButtonTextActive}>FreeCell</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/klondike?mode=resume');
-                }}
-                style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
-              >
-                <Text style={styles.actionButtonText}>Klondike</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/pyramid?mode=resume');
-                }}
-                style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
-              >
-                <Text style={styles.actionButtonText}>Pyramid</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setGameMenuOpen(false);
-                  router.replace('/game/spider?mode=resume');
-                }}
-                style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
-              >
-                <Text style={styles.actionButtonText}>Spider</Text>
-              </Pressable>
+              {availableGames.map((game) => game.id === 'freecell' ? (
+                <View key={game.id} style={[styles.actionButton, styles.actionButtonActive]}>
+                  <Text style={styles.actionButtonTextActive}>{game.name}</Text>
+                </View>
+              ) : (
+                <Pressable key={game.id} accessibilityRole="button"
+                  onPress={() => {
+                    setGameMenuOpen(false);
+                    router.replace(`/game/${game.id}?mode=resume`);
+                  }}
+                  style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}>
+                  <Text style={styles.actionButtonText}>{game.name}</Text>
+                </Pressable>
+              ))}
               <Pressable
                 accessibilityRole="button"
                 onPress={() => {
@@ -617,6 +591,7 @@ export function FreeCellGameScreen({ mode }: Props) {
           </View>
         ) : null}
       </View>
+      </GameScreenLayout>
     </SafeAreaView>
   );
 }

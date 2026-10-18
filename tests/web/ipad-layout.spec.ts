@@ -4,6 +4,7 @@ import { createClockGame, drawClockStock, placeClockActiveCard } from '../../pac
 import type { SavedGames } from '../../apps/app/src/state/types';
 
 const games = ['Clock', 'FreeCell', 'Klondike', 'Pyramid', 'Spider'] as const;
+const visibleGames = ['FreeCell', 'Klondike', 'Spider'] as const;
 
 for (const viewport of [{ width: 834, height: 1194 }, { width: 1194, height: 834 }, { width: 1194, height: 734 }]) {
   test.describe(`11-inch iPad ${viewport.width}x${viewport.height}`, () => {
@@ -12,7 +13,7 @@ for (const viewport of [{ width: 834, height: 1194 }, { width: 1194, height: 834
     test('home previews and Continue fit the iPad', async ({ page }, testInfo) => {
       await page.goto('/');
       await expect(page.getByRole('heading', { name: "Mum's Cards" })).toBeVisible();
-      for (const game of games) {
+      for (const game of visibleGames) {
         const tile = page.getByRole('button', { name: `New ${game}`, exact: true });
         await expect(tile).toBeInViewport();
         const box = await tile.boundingBox();
@@ -51,7 +52,7 @@ for (const viewport of [{ width: 834, height: 1194 }, { width: 1194, height: 834
         expect(board!.y + board!.height, `${game}: board bottom`).toBeLessThanOrEqual(viewport.height);
 
         await menu.tap();
-        for (const name of [...games.filter((name) => name !== game), '< home']) {
+        for (const name of [...visibleGames.filter((name) => name !== game), '< home']) {
           const item = page.getByRole('button', { name, exact: true });
           const box = await item.boundingBox();
           expect(box, `${game}: menu ${name}`).not.toBeNull();
@@ -71,7 +72,7 @@ test.describe('narrow home screen', () => {
 
   test('game tiles stay inside a phone viewport', async ({ page }) => {
     await page.goto('/');
-    for (const game of games) {
+    for (const game of visibleGames) {
       const tile = page.getByRole('button', { name: `New ${game}`, exact: true });
       await tile.scrollIntoViewIfNeeded();
       const box = await tile.boundingBox();

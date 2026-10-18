@@ -88,6 +88,8 @@ describe('save-preserving navigation and game interactions', () => {
       spider: <SpiderGameScreen mode="resume" />, clock: <ClockGameScreen mode="resume" />, pyramid: <PyramidGameScreen mode="resume" /> };
     render(views[id]);
     fireEvent.click(screen.getByRole('button', { name: 'Games ▾' }));
+    expect(screen.queryByRole('button', { name: 'Clock' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pyramid' })).toBeNull();
     const destination = id === 'freecell' ? 'Klondike' : 'FreeCell';
     fireEvent.click(screen.getByRole('button', { name: destination }));
     expect(replace).toHaveBeenLastCalledWith(`/game/${destination.toLowerCase()}?mode=resume`);
