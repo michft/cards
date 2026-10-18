@@ -7,3 +7,6 @@
 - **Run:** Selected card and the movable cards stacked below it. Moving a run preserves its selected starting card.
 - **Offload:** Explicit, stoppable automation that moves safe cards into foundations, one move about every 0.1 seconds.
 - **Safe foundation move:** Legal promotion that preserves tableau support for lower cards under the deal's build policy.
+- **Save conflict:** Another tab changed the same saved game. Local changes are blocked from overwriting it; Load latest saves returns home and discards unsaved changes in this tab.
+- **Offline copy:** Complete, verified app files cached on the device for use without a network. Ready offline describes these files; saved game data is stored separately.
+- **Home Screen app:** The app opened from its installed iPad icon. It can use separate storage from Safari, so it needs its own online setup and Ready offline check.

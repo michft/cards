@@ -6,6 +6,7 @@ coverage
 dist
 playwright-report
 test-results
+artifacts
 apps/app/.expo
 apps/app/dist
 apps/app/web-build

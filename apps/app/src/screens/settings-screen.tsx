@@ -6,7 +6,8 @@ import type {
 import type { FreeCellTableauBuildPolicy } from '@mumscards/game-freecell';
 import type { SpiderSuitMode } from '@mumscards/game-spider';
 import { useLocalSearchParams } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
@@ -124,6 +125,8 @@ const debugModes: Array<{ value: boolean; label: string; description: string }> 
 
 export function SettingsScreen() {
   const params = useLocalSearchParams<{ game?: string }>();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const { settings, updateSettings } = useAppModel();
   const game = params.game === 'spider'
     ? 'spider'
@@ -134,6 +137,14 @@ export function SettingsScreen() {
       : params.game === 'pyramid'
         ? 'pyramid'
       : 'klondike';
+
+  if (!mounted) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <ActivityIndicator accessibilityLabel="Loading settings" accessibilityLiveRegion="polite" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>

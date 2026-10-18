@@ -1,12 +1,20 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
 
 import { palette } from '../src/theme';
+import { PersistenceNotice } from '../src/state/persistence-notice';
+import { startOfflineApp } from '../src/offline/offline-app';
 
 export default function RootLayout() {
+  useEffect(() => {
+    if (Platform.OS === 'web') return startOfflineApp();
+  }, []);
   return (
     <>
       <StatusBar style="dark" />
+      <PersistenceNotice />
       <Stack
         screenOptions={{
           headerStyle: {

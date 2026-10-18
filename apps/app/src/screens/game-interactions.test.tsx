@@ -104,7 +104,8 @@ beforeEach(() => {
   replace.mockReset();
   model = {
     hydrated: true,
-    hydrationError: null,
+    hydrationError: null, persistenceError: null, storageConflict: false, saveRevision: 0,
+    retryPersistence: vi.fn().mockResolvedValue(undefined), reloadSavedGames: vi.fn().mockResolvedValue(undefined),
     retryHydration: vi.fn().mockResolvedValue(undefined),
     settings: { ...defaultSettings },
     saves: { ...defaultSavedGames },

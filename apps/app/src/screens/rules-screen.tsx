@@ -1,5 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { palette, radius, spacing, typography } from '../theme';
@@ -12,7 +13,7 @@ const rulesByGame: Record<string, { title: string; rules: string[] }> = {
       'Draw one card from stock to the active slot.',
       'Place the active card onto its matching hour: Ace=1 through Queen=12.',
       'After placing, reveal the previous top card from that hour as the next active card.',
-      'Kings move to the king pile. Win by resolving all cards and finding all 4 kings.',
+      'Kings return to the stock pile that started their chain. Win by resolving all cards and finding all 4 kings.',
     ],
   },
   freecell: {
@@ -22,7 +23,7 @@ const rulesByGame: Record<string, { title: string; rules: string[] }> = {
       'Tableau color/suit policy is configurable in Settings.',
       'Use free cells as temporary single-card storage.',
       'Foundations build up by suit from Ace to King.',
-      'Move depth is limited by available free cells.',
+      'Move depth depends on available free cells and empty tableau columns, excluding the destination.',
     ],
   },
   klondike: {
@@ -59,8 +60,20 @@ const rulesByGame: Record<string, { title: string; rules: string[] }> = {
 
 export function RulesScreen() {
   const params = useLocalSearchParams<{ game?: string }>();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const game = params.game ?? 'klondike';
-  const content = rulesByGame[game] ?? rulesByGame.klondike;
+  const content = Object.prototype.hasOwnProperty.call(rulesByGame, game)
+    ? rulesByGame[game]
+    : rulesByGame.klondike;
+
+  if (!mounted) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <ActivityIndicator accessibilityLabel="Loading rules" accessibilityLiveRegion="polite" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>

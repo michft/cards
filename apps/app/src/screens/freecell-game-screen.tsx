@@ -346,7 +346,7 @@ export function FreeCellGameScreen({ mode }: Props) {
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.headerActions}>
-            <ActionButton label="New" onPress={startNewGame} shortcut="Cmd+N" />
+            <ActionButton label="New" onPress={startNewGame} shortcut="Cmd/Ctrl+Alt+N" />
             <ActionButton label="Restart" onPress={restartGame} shortcut="Cmd+R" />
             {settings.freeCellDebugTools ? (
               <ActionButton label="Save" onPress={saveCurrentState} />
@@ -779,7 +779,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: spacing.xl + spacing.lg,
+    paddingTop: 44 + spacing.sm * 2,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     gap: spacing.md,
@@ -811,6 +811,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   actionButton: {
+    minHeight: 44,
+    justifyContent: 'center',
     backgroundColor: palette.paper,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
@@ -843,7 +845,7 @@ const styles = StyleSheet.create({
   actionIconButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 38,
+    minWidth: 44,
     paddingHorizontal: spacing.sm,
   },
   horizontalBoardContent: {
@@ -872,6 +874,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   snapshotLoadButton: {
+    minHeight: 44,
+    justifyContent: 'center',
     backgroundColor: '#f2ebdc',
     borderRadius: radius.sm,
     flex: 1,
@@ -883,8 +887,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f2ebdc',
     borderRadius: radius.sm,
     justifyContent: 'center',
-    minHeight: 30,
-    minWidth: 30,
+    minHeight: 44,
+    minWidth: 44,
   },
   snapshotText: {
     color: palette.ink,

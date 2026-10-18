@@ -285,31 +285,43 @@ describe('Klondike engine', () => {
     expect(hint.move.destination.zone).toBe('tableau');
   });
 
-  it('recognizes auto-complete ready states', () => {
-    const state: KlondikeState = {
-      gameId: 'klondike',
-      drawCount: 3,
-      completed: false,
-      stock: [],
-      waste: [],
-      foundations: [
-        [card('a-c', 'clubs', 1)],
-        [],
-        [],
-        [],
-      ],
+  function almostWonState(): KlondikeState {
+    const deck = createDeck('completion');
+    return {
+      gameId: 'klondike', drawCount: 3, completed: false, stock: [], waste: [],
+      foundations: SUITS.map((suit) => deck.filter((current) => current.suit === suit && current.rank <= 11)),
       tableau: [
-        [card('2-c', 'clubs', 2)],
-        [],
-        [],
-        [],
-        [],
-        [],
-        [],
+        ...SUITS.map((suit) => [
+          { ...deck.find((current) => current.suit === suit && current.rank === 13)!, faceUp: true },
+          { ...deck.find((current) => current.suit === suit && current.rank === 12)!, faceUp: true },
+        ]), [], [], [],
       ],
     };
+  }
 
+  it('recognizes a full-deck finish despite legal foundation withdrawals', () => {
+    const state = almostWonState();
+    const before = structuredClone(state);
+    expect(getLegalMoves(state).some((move) => move.kind === 'move' && move.source.zone === 'foundation')).toBe(true);
     expect(canAutoComplete(state)).toBe(true);
+    expect(state).toEqual(before);
+  });
+
+  it('requires automatic promotions to finish the entire game', () => {
+    const state = almostWonState();
+    state.tableau[0].reverse();
+    expect(canAutoComplete(state)).toBe(false);
+    state.tableau[0] = [card('two-only', 'clubs', 2)];
+    state.foundations = [[card('ace-only', 'clubs', 1)], [], [], []];
+    expect(canAutoComplete(state)).toBe(false);
+  });
+
+  it('rejects completion while stock or hidden tableau cards remain', () => {
+    const state = almostWonState();
+    state.stock.push(state.tableau[0].pop()!);
+    expect(canAutoComplete(state)).toBe(false);
+    state.tableau[0].push({ ...state.stock.pop()!, faceUp: false });
+    expect(canAutoComplete(state)).toBe(false);
   });
 
   it('preserves draw order after recycling the waste back into stock', () => {

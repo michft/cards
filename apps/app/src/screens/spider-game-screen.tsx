@@ -16,7 +16,6 @@ import { palette, radius, spacing, typography } from '../theme';
 
 type HistoryState = GameHistory<SpiderState>;
 
-const MAX_SPIDER_TABLEAU_MOVE = 12;
 const MAX_SPIDER_COLLAPSE_ITERATIONS = 128;
 
 type Props = {
@@ -302,7 +301,7 @@ export function SpiderGameScreen({ mode }: Props) {
           <View style={styles.switchRow}>
             <ShortcutPressable
               onPress={startNewGame}
-              shortcut="Cmd+N"
+              shortcut="Cmd/Ctrl+Alt+N"
               style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
             >
               <Text style={styles.switchButtonText}>New</Text>
@@ -369,6 +368,7 @@ export function SpiderGameScreen({ mode }: Props) {
               <Text style={styles.switchButtonText}>Rules</Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Open settings"
               accessibilityRole="button"
               onPress={() => router.push('/settings?game=spider')}
               style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: spacing.xl + spacing.lg,
+    paddingTop: 44 + spacing.sm * 2,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     gap: spacing.md,
@@ -533,13 +533,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   switchButton: {
+    minHeight: 44,
+    justifyContent: 'center',
     backgroundColor: palette.paper,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    minHeight: 38,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   switchButtonActive: {
     backgroundColor: palette.accent,
@@ -604,6 +604,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   snapshotLoadButton: {
+    minHeight: 44,
+    justifyContent: 'center',
     backgroundColor: '#f2ebdc',
     borderRadius: radius.sm,
     flex: 1,
@@ -615,8 +617,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f2ebdc',
     borderRadius: radius.sm,
     justifyContent: 'center',
-    minHeight: 30,
-    minWidth: 30,
+    minHeight: 44,
+    minWidth: 44,
   },
   snapshotText: {
     color: palette.ink,
@@ -680,16 +682,6 @@ function moveSpiderStack(
   }
 
   const moving = sourcePile.slice(sourceCardIndex);
-  const maxMovableCards = getSpiderMaxMovableCards(
-    state,
-    sourcePileIndex,
-    destinationPileIndex,
-  );
-
-  if (moving.length > maxMovableCards) {
-    return null;
-  }
-
   const lead = moving[0];
   const destinationTop = destinationPile[destinationPile.length - 1];
 
@@ -811,16 +803,6 @@ function resolveSpiderFallbackCardIndex(
   }
 
   return selectedCardIndex;
-}
-
-function getSpiderMaxMovableCards(
-  state: SpiderState,
-  sourcePileIndex: number,
-  destinationPileIndex: number,
-): number {
-  const _sourcePile = state.tableau[sourcePileIndex];
-  const _destinationPile = state.tableau[destinationPileIndex];
-  return MAX_SPIDER_TABLEAU_MOVE;
 }
 
 function isCompleteSpiderRun(cards: SpiderTableauCard[]): boolean {

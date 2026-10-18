@@ -283,16 +283,7 @@ export function canAutoComplete(state: KlondikeState, options?: KlondikeRuleOpti
     return false;
   }
 
-  const moves = getLegalMoves(state, resolved);
-  const foundationMoves = moves.filter(isFoundationMove);
-  const nonFoundationMoves = moves.filter(
-    (move) =>
-      move.kind !== 'move' ||
-      (move.destination.zone !== 'foundation' &&
-        !(move.destination.zone === 'tableau' && state.tableau[move.destination.pileIndex].length === 0)),
-  );
-
-  return foundationMoves.length > 0 && nonFoundationMoves.length === 0;
+  return isWon(runAutoComplete(state, resolved));
 }
 
 export function runAutoComplete(state: KlondikeState, options?: KlondikeRuleOptions): KlondikeState {

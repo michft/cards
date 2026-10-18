@@ -25,17 +25,29 @@ describe('useWebGameShortcuts', () => {
     const onNew = vi.fn();
     const { rerender } = renderHook(() => useWebGameShortcuts({ onNew }));
 
-    fireEvent.keyDown(window, { key: 'n', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'n', code: 'KeyN', ctrlKey: true, altKey: true });
     expect(onNew).toHaveBeenCalledOnce();
 
     navigation.focused = false;
     rerender();
-    expect(fireEvent.keyDown(window, { key: 'n', ctrlKey: true })).toBe(true);
+    expect(fireEvent.keyDown(window, { key: 'n', code: 'KeyN', ctrlKey: true, altKey: true })).toBe(true);
     expect(onNew).toHaveBeenCalledOnce();
 
     navigation.focused = true;
     rerender();
-    fireEvent.keyDown(window, { key: 'n', metaKey: true });
+    fireEvent.keyDown(window, { key: 'Dead', code: 'KeyN', metaKey: true, altKey: true });
+    expect(onNew).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves browser New Window commands alone and uses Command/Control+Alt+N for New', () => {
+    const onNew = vi.fn();
+    renderHook(() => useWebGameShortcuts({ onNew }));
+
+    for (const modifiers of [{ ctrlKey: true }, { metaKey: true }]) {
+      expect(fireEvent.keyDown(window, { key: 'n', code: 'KeyN', ...modifiers })).toBe(true);
+      expect(fireEvent.keyDown(window, { key: 'N', code: 'KeyN', shiftKey: true, ...modifiers })).toBe(true);
+      expect(fireEvent.keyDown(window, { key: 'n', code: 'KeyN', altKey: true, ...modifiers })).toBe(false);
+    }
     expect(onNew).toHaveBeenCalledTimes(2);
   });
 

@@ -23,6 +23,87 @@ test('new game and continue flows preserve progress', async ({ page }) => {
   await expect.poll(() => savedKlondike(page)).toEqual(before);
 });
 
+test('failed writes stay visible and retry the latest local deal', async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = Storage.prototype.setItem;
+    let unavailable = false;
+    window.addEventListener('fail-saves', () => { unavailable = true; });
+    window.addEventListener('restore-saves', () => { unavailable = false; });
+    Storage.prototype.setItem = function(key: string, value: string) {
+      if (key === 'mumscards.saves' && unavailable) {
+        document.documentElement.dataset.failedWrites = String(Number(document.documentElement.dataset.failedWrites ?? 0) + 1);
+        throw new Error('Quota exceeded');
+      }
+      return original.call(this, key, value);
+    };
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New Klondike', exact: true }).click();
+  await expect(page).toHaveURL(/mode=resume$/);
+  const initial = await savedKlondike(page);
+  await page.evaluate(() => window.dispatchEvent(new Event('fail-saves')));
+  await page.getByRole('button', { name: 'Draw', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Changes could not be saved');
+  expect(await savedKlondike(page)).toEqual(initial);
+  await page.getByRole('button', { name: 'Draw', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Number(document.documentElement.dataset.failedWrites))).toBe(2);
+  await page.evaluate(() => window.dispatchEvent(new Event('restore-saves')));
+  await page.getByRole('button', { name: 'Retry saving', exact: true }).click();
+  await expect.poll(async () => (await savedKlondike(page))?.waste.length).toBe(6);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
+  expect((await savedKlondike(page))?.waste).toHaveLength(6);
+});
+
+test('tabs merge different games and block stale same-game writes', async ({ page, context }) => {
+  const other = await context.newPage();
+  await Promise.all([page.goto('/'), other.goto('/')]);
+  await Promise.all([
+    page.getByRole('button', { name: 'New Klondike', exact: true }).click(),
+    other.getByRole('button', { name: 'New FreeCell', exact: true }).click(),
+  ]);
+  await expect(page).toHaveURL(/\/game\/klondike\?mode=resume$/);
+  await expect(other).toHaveURL(/\/game\/freecell\?mode=resume$/);
+  expect(await savedKlondike(page)).toBeTruthy();
+  await page.getByRole('button', { name: 'Draw', exact: true }).click();
+  await expect.poll(async () => (await savedKlondike(page))?.waste.length).toBe(3);
+  await other.goto('/game/klondike?mode=resume');
+  await expect(other.getByRole('button', { name: 'Draw', exact: true })).toBeVisible();
+  // The new→resume remount saves once more. Capture its final envelope after
+  // leaving FreeCell, so a legitimate mount timestamp is not a merge failure.
+  const freecell = await page.evaluate(() => JSON.parse(localStorage.getItem('mumscards.saves')!).freecell);
+  expect(freecell).toBeTruthy();
+  for (let count = 6; count <= 9; count += 3) {
+    await page.getByRole('button', { name: 'Draw', exact: true }).click();
+    await expect.poll(async () => (await savedKlondike(page))?.waste.length).toBe(count);
+  }
+  const latest = await savedKlondike(page);
+  await other.getByRole('button', { name: 'Draw', exact: true }).click();
+  await expect(other.getByRole('alert')).toContainText('changed in another tab');
+  expect(await savedKlondike(page)).toEqual(latest);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('mumscards.saves')!).freecell)).toEqual(freecell);
+  await other.getByRole('button', { name: 'Load latest saves', exact: true }).click();
+  await expect(other.getByText("Mum's Cards")).toBeVisible();
+  await other.getByRole('button', { name: 'Continue Last Game', exact: true }).click();
+  await expect(other.getByRole('button', { name: 'Draw', exact: true })).toBeVisible();
+  expect(await savedKlondike(other)).toEqual(latest);
+  await expect(other.getByRole('alert')).toHaveCount(0);
+});
+
+test('malformed saves and inherited rules keys do not crash screens', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => localStorage.setItem('mumscards.saves', JSON.stringify({
+    klondike: { gameId: 'klondike', updatedAt: '2026-10-18', state: {} },
+  })));
+  await page.goto('/game/klondike?mode=resume');
+  await expect(page.getByRole('button', { name: 'Draw', exact: true })).toBeVisible();
+  await expect.poll(async () => (await savedKlondike(page))?.stock.length).toBe(24);
+  await page.goto('/rules?game=toString');
+  await expect(page.getByText('Klondike', { exact: true })).toBeVisible();
+  await expect(page.getByText('Build tableau piles down in alternating colours.')).toBeVisible();
+});
+
 test('reload and game navigation preserve deal, history, and Restart origin', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'New Klondike', exact: true }).click();
