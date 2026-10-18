@@ -665,7 +665,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   actionButtonDisabled: {
-    opacity: 0.4,
+    backgroundColor: palette.surfaceMuted,
   },
   actionIconButton: {
     alignItems: 'center',

@@ -142,7 +142,7 @@ export function SettingsScreen() {
   if (!mounted) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ActivityIndicator accessibilityLabel="Loading settings" accessibilityLiveRegion="polite" />
+        <ActivityIndicator color={palette.onTable} accessibilityLabel="Loading settings" accessibilityLiveRegion="polite" />
       </SafeAreaView>
     );
   }

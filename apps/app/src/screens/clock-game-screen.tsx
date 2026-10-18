@@ -776,7 +776,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   actionButtonDisabled: {
-    opacity: 0.4,
+    backgroundColor: palette.surfaceMuted,
   },
   actionIconButton: {
     alignItems: 'center',
@@ -888,12 +888,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   hourPlaceholderText: {
-    color: '#bdd1c5',
+    color: palette.onTableMuted,
     fontSize: typography.eyebrow,
     fontWeight: '700',
   },
   clockHintLabel: {
-    color: '#d9caa7',
+    color: palette.onTable,
     fontSize: typography.eyebrow,
     fontWeight: '700',
     position: 'absolute',

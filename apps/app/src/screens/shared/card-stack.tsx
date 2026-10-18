@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(215, 181, 109, 0.22)',
   },
   placeholderText: {
-    color: 'rgba(246, 241, 231, 0.7)',
+    color: palette.onTable,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 1.2,

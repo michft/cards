@@ -1,8 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAppModel } from '../../src/state/app-provider';
+import { palette, radius, spacing } from '../../src/theme';
 
 import { ClockGameScreen } from '../../src/screens/clock-game-screen';
 import { FreeCellGameScreen } from '../../src/screens/freecell-game-screen';
@@ -36,15 +37,15 @@ export default function GameRoute() {
   if (!hydrated) {
     if (hydrationError) {
       return (
-        <View>
-          <Text accessibilityRole="alert">{hydrationError}</Text>
-          <Pressable accessibilityRole="button" onPress={() => void retryHydration()}>
-            <Text>Retry storage</Text>
+        <View style={styles.errorPanel}>
+          <Text accessibilityRole="alert" style={styles.errorText}>{hydrationError}</Text>
+          <Pressable accessibilityRole="button" style={styles.retry} onPress={() => void retryHydration()}>
+            <Text style={styles.retryText}>Retry storage</Text>
           </Pressable>
         </View>
       );
     }
-    return <ActivityIndicator accessibilityLabel="Loading game" />;
+    return <ActivityIndicator color={palette.onTable} accessibilityLabel="Loading game" />;
   }
 
   if (gameId === 'spider') {
@@ -71,3 +72,10 @@ export default function GameRoute() {
     />
   );
 }
+
+const styles = StyleSheet.create({
+  errorPanel: { padding: spacing.lg, gap: spacing.md },
+  errorText: { color: palette.onTable, fontSize: 16, lineHeight: 24 },
+  retry: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', padding: spacing.sm, backgroundColor: palette.paper, borderRadius: radius.sm },
+  retryText: { color: palette.ink, fontSize: 16, fontWeight: '600' },
+});

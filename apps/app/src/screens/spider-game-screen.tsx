@@ -674,7 +674,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   switchButtonDisabled: {
-    opacity: 0.4,
+    backgroundColor: palette.surfaceMuted,
   },
   horizontalBoardContent: {
     paddingBottom: spacing.sm,
@@ -712,7 +712,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   title: {
-    color: palette.ink,
+    color: palette.onTable,
     fontSize: typography.title,
     fontWeight: '700',
   },
@@ -755,7 +755,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   copy: {
-    color: '#2f3e34',
+    color: palette.onTableMuted,
     fontSize: typography.body,
     lineHeight: 22,
   },

@@ -1,5 +1,7 @@
 # Glossary
 
+- **Table text:** Warm white (`onTable`) or pale green (`onTableMuted`) text on the green playing surface. Card faces and light buttons keep dark ink and red/black suits.
+
 - **Landscape board:** Game layout adapted to a wider, shorter screen. Pyramid places stock beside its rows; Clock sizes its full circle to available height. Rotation preserves the deal and history.
 
 - **Deal:** Original and current card layouts plus game rules. New creates a fresh deal; Restart restores its original layout. Legacy saves without an original layout restart from their saved position.

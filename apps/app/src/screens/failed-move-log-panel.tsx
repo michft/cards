@@ -71,5 +71,5 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   button: { minHeight: 44, justifyContent: 'center', backgroundColor: palette.paper, borderRadius: radius.sm, padding: spacing.sm },
   buttonText: { color: palette.ink, fontSize: 16, fontWeight: '600' },
-  disabled: { opacity: 0.5 },
+  disabled: { backgroundColor: palette.surfaceMuted },
 });
