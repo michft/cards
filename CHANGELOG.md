@@ -4,6 +4,9 @@
 
 ### Added
 
+- Redesign the home screen with illustrated game layouts, a responsive game grid, and a distinct Continue tile.
+- Drag cards and runs in FreeCell, Spider, Clock, and Pyramid; release on legal destinations and cancel interrupted gestures.
+- Cycle Spider hints with repeated taps, including legal stock deals; reset hints after changing the board.
 - Installable iPad web app with a verified, versioned offline copy of all five games, Rules, Settings, and local saves.
 - Offline readiness/retry status, safe waiting updates, deployable ZIP packaging, and iPad setup instructions in `docs/ipad-offline.md`.
 

@@ -1,184 +1,128 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { OfflineStatus } from '../offline/offline-status';
 import { useAppModel } from '../state/app-provider';
 import type { GameVariant } from '../state/types';
 import { palette, radius, spacing, typography } from '../theme';
-import { OfflineStatus } from '../offline/offline-status';
+import { GamePreview } from './game-preview';
+
+const games: Array<{ id: GameVariant; name: string; description: string }> = [
+  { id: 'klondike', name: 'Klondike', description: 'The classic seven-column deal.' },
+  { id: 'clock', name: 'Clock', description: 'Follow the hours. Find the kings.' },
+  { id: 'freecell', name: 'FreeCell', description: 'Four free cells. Every card in view.' },
+  { id: 'pyramid', name: 'Pyramid', description: 'Find pairs that add up to 13.' },
+  { id: 'spider', name: 'Spider', description: 'Build suited runs from King to Ace.' },
+];
 
 export function HomeScreen() {
   const { hydrated, hydrationError, retryHydration, saves } = useAppModel();
   const lastSavedGame = hydrated
-    ? (
-      Object.entries(saves) as Array<[GameVariant, (typeof saves)[GameVariant]]>
-    )
-      .filter(
-        (entry): entry is [GameVariant, NonNullable<(typeof saves)[GameVariant]>] =>
-          Boolean(entry[1]),
-      )
-      .sort((left, right) => {
-        const leftTime = new Date(left[1].updatedAt).getTime();
-        const rightTime = new Date(right[1].updatedAt).getTime();
-        return rightTime - leftTime;
-      })[0] ?? null
+    ? (Object.entries(saves) as Array<[GameVariant, (typeof saves)[GameVariant]]>)
+      .filter((entry): entry is [GameVariant, NonNullable<(typeof saves)[GameVariant]>] => Boolean(entry[1]))
+      .sort((left, right) => new Date(right[1].updatedAt).getTime() - new Date(left[1].updatedAt).getTime())[0] ?? null
     : null;
-  const canContinue = Boolean(lastSavedGame);
+  const lastGameName = games.find((game) => game.id === lastSavedGame?.[0])?.name;
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.hero}>
-          <Text style={styles.eyebrow}>Offline-first solitaire</Text>
-          <Text style={styles.title}>Mum&apos;s Cards</Text>
-          <Text style={styles.subtitle}>
-            Five solitaire games. Save your place and play without a network.
-          </Text>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>A little time for solitaire</Text>
+          <Text accessibilityRole="header" style={styles.title}>Mum&apos;s Cards</Text>
+          <Text style={styles.subtitle}>Five familiar games. Pick a table and settle in.</Text>
         </View>
 
-        <View style={styles.menu}>
-          {hydrationError ? (
-            <>
-              <Text accessibilityRole="alert" style={styles.subtitle}>{hydrationError}</Text>
+        {hydrationError ? (
+          <View style={styles.storageNotice}>
+            <Text accessibilityRole="alert" style={styles.subtitle}>{hydrationError}</Text>
+            <Pressable accessibilityRole="button" onPress={() => void retryHydration()} style={styles.retryButton}>
+              <Text style={styles.actionText}>Retry storage</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={styles.collection}>
+          <View style={styles.sectionHeader}>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>Choose your game</Text>
+            <Text style={styles.sectionNote}>Play at your own pace</Text>
+          </View>
+          <View style={styles.grid}>
+            {games.map((game) => (
               <Pressable
+                key={game.id}
                 accessibilityRole="button"
-                onPress={() => void retryHydration()}
-                style={styles.secondaryButton}
+                accessibilityLabel={`New ${game.name}`}
+                accessibilityHint={game.description}
+                onPress={() => router.push(`/game/${game.id}?mode=new`)}
+                style={({ pressed }) => [styles.gameTile, pressed && styles.tilePressed]}
               >
-                <Text style={styles.secondaryButtonText}>Retry storage</Text>
+                <View style={styles.preview}><GamePreview game={game.id} /></View>
+                <View style={styles.tileCaption}>
+                  <View style={styles.tileCopy}>
+                    <Text style={styles.gameTitle}>New {game.name}</Text>
+                    <Text style={styles.description}>{game.description}</Text>
+                  </View>
+                  <Text aria-hidden style={styles.arrow}>↗</Text>
+                </View>
               </Pressable>
-            </>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/game/klondike?mode=new')}
-            style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
-          >
-            <Text style={styles.primaryButtonText}>New Klondike</Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/game/clock?mode=new')}
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
-          >
-            <Text style={styles.secondaryButtonText}>New Clock</Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/game/freecell?mode=new')}
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
-          >
-            <Text style={styles.secondaryButtonText}>New FreeCell</Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/game/pyramid?mode=new')}
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
-          >
-            <Text style={styles.secondaryButtonText}>New Pyramid</Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/game/spider?mode=new')}
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
-          >
-            <Text style={styles.secondaryButtonText}>New Spider</Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={!canContinue}
-            onPress={() => {
-              if (!lastSavedGame) {
-                return;
-              }
-
-              router.push(`/game/${lastSavedGame[0]}?mode=resume`);
-            }}
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              !canContinue && styles.buttonDisabled,
-              pressed && canContinue && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.secondaryButtonText}>
-              {canContinue ? 'Continue Last Game' : 'Continue unavailable'}
-            </Text>
-          </Pressable>
-          <OfflineStatus />
+            ))}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={lastSavedGame ? 'Continue Last Game' : 'Continue unavailable'}
+              disabled={!lastSavedGame}
+              onPress={() => {
+                if (lastSavedGame) router.push(`/game/${lastSavedGame[0]}?mode=resume`);
+              }}
+              style={({ pressed }) => [styles.gameTile, styles.continueTile, pressed && styles.tilePressed]}
+            >
+              <View aria-hidden style={styles.continueArt}>
+                <Text style={styles.continueSymbol}>↩</Text>
+                <Text style={styles.continueKicker}>{lastGameName ?? 'Make yourself at home'}</Text>
+              </View>
+              <View style={styles.tileCaption}>
+                <View style={styles.tileCopy}>
+                  <Text style={styles.gameTitle}>{lastSavedGame ? 'Continue Last Game' : 'Continue unavailable'}</Text>
+                  <Text style={styles.description}>
+                    {lastSavedGame ? 'Your last game, right where you left it.' : 'Your saved game will be waiting here.'}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+          </View>
         </View>
+        <OfflineStatus />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: palette.table,
-  },
-  container: {
-    flexGrow: 1,
-    padding: spacing.lg,
-    justifyContent: 'space-between',
-  },
-  hero: {
-    marginTop: spacing.xl,
-    gap: spacing.sm,
-  },
-  eyebrow: {
-    color: palette.accent,
-    fontSize: typography.eyebrow,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  title: {
-    color: palette.paper,
-    fontSize: 42,
-    fontWeight: '700',
-  },
-  subtitle: {
-    color: '#ebdfca',
-    fontSize: typography.body,
-    lineHeight: 24,
-    maxWidth: 480,
-  },
-  menu: {
-    gap: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  primaryButton: {
-    backgroundColor: palette.accent,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  secondaryButton: {
-    backgroundColor: palette.paper,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  primaryButtonText: {
-    color: palette.ink,
-    fontSize: typography.subtitle,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  secondaryButtonText: {
-    color: palette.ink,
-    fontSize: typography.body,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  buttonDisabled: {
-    opacity: 0.45,
-  },
-  buttonPressed: {
-    transform: [{ scale: 0.99 }],
-  },
+  safeArea: { flex: 1, backgroundColor: palette.table },
+  container: { width: '100%', maxWidth: 1180, alignSelf: 'center', padding: spacing.lg, gap: spacing.xl, paddingBottom: 36 },
+  header: { paddingTop: spacing.lg, gap: spacing.sm },
+  eyebrow: { color: palette.accent, fontSize: typography.eyebrow, letterSpacing: 1.8, textTransform: 'uppercase', fontWeight: '600' },
+  title: { color: palette.paper, fontSize: 46, lineHeight: 54, fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif' },
+  subtitle: { color: '#ebdfca', fontSize: typography.body, lineHeight: 24 },
+  collection: { gap: spacing.md },
+  sectionHeader: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: spacing.xs },
+  sectionTitle: { color: palette.paper, fontSize: typography.subtitle, fontWeight: '600' },
+  sectionNote: { color: '#d0ddcf', fontSize: 13 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  gameTile: { flexBasis: 280, flexGrow: 1, minWidth: 0, maxWidth: '100%', borderRadius: radius.lg, overflow: 'hidden', backgroundColor: palette.paper, borderWidth: 1, borderColor: '#dcd4bf' },
+  preview: { minHeight: 180, justifyContent: 'center', alignItems: 'center', backgroundColor: palette.tableShadow, margin: 7, marginBottom: 0, borderRadius: radius.md },
+  tileCaption: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: spacing.sm },
+  tileCopy: { flex: 1, gap: 5 },
+  gameTitle: { color: palette.ink, fontSize: typography.subtitle, fontWeight: '700' },
+  description: { color: '#526052', fontSize: 13, lineHeight: 19 },
+  arrow: { color: '#526052', fontSize: 24 },
+  tilePressed: { opacity: 0.85 },
+  continueTile: { backgroundColor: '#e8d6a9', borderColor: palette.accent },
+  continueArt: { minHeight: 180, margin: 7, marginBottom: 0, justifyContent: 'center', alignItems: 'center', gap: spacing.xs },
+  continueSymbol: { color: palette.table, fontSize: 78, lineHeight: 90 },
+  continueKicker: { color: '#4e542f', fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  storageNotice: { gap: spacing.sm },
+  retryButton: { alignSelf: 'flex-start', backgroundColor: palette.accent, borderRadius: radius.sm, padding: spacing.md, minHeight: 44, justifyContent: 'center' },
+  actionText: { color: palette.ink, fontSize: typography.body, fontWeight: '600' },
 });

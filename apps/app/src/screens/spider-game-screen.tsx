@@ -1,20 +1,23 @@
 import type { PersistedGameEnvelope } from '@mumscards/engine-core';
+import { rankLabel } from '@mumscards/engine-core';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { createSpiderGame } from '@mumscards/game-spider';
 import type { SpiderState, SpiderTableauCard } from '@mumscards/game-spider';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { CardStack } from './shared/card-stack';
+import { useCardDrag } from './shared/use-card-drag';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 import { palette, radius, spacing, typography } from '../theme';
 
 type HistoryState = GameHistory<SpiderState>;
+type SpiderSource = { pileIndex: number; cardIndex: number };
 
 const MAX_SPIDER_COLLAPSE_ITERATIONS = 128;
 
@@ -38,6 +41,7 @@ export function SpiderGameScreen({ mode }: Props) {
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [expandedTableauPile, setExpandedTableauPile] = useState<number | null>(null);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
+  const [hintCursor, setHintCursor] = useState<{ state: SpiderState; index: number } | null>(null);
   const availableWidth = Math.max(320, width - spacing.lg * 2);
   const cardWidth = Math.max(46, Math.min(72, availableWidth / 11.4));
   const rowGap = spacing.sm;
@@ -45,6 +49,36 @@ export function SpiderGameScreen({ mode }: Props) {
   const suitModeLabel = getSpiderSuitModeLabel(history.present.suitMode);
   const canDealStock = history.present.stock.length >= 10 && history.present.tableau.every((pile) => pile.length > 0);
   const won = history.present.completedRuns >= 8;
+  const hints = useMemo(() => getSpiderHints(history.present), [history.present]);
+  const hintIndex = hintCursor?.state === history.present ? hintCursor.index : null;
+  const cardDrag = useCardDrag<SpiderSource, number>({
+    getCards: ({ pileIndex, cardIndex }) => {
+      const pile = history.present.tableau[pileIndex];
+      return pile && canMoveSpiderStack(pile, cardIndex) ? pile.slice(cardIndex) : [];
+    },
+    getDestinations: ({ pileIndex, cardIndex }) => {
+      const pile = history.present.tableau[pileIndex];
+      if (!pile || !canMoveSpiderStack(pile, cardIndex)) return [];
+      return history.present.tableau.flatMap((destination, destinationIndex) =>
+        destinationIndex !== pileIndex && canPlaceSpiderLeadOnDestination(pile[cardIndex], destination.at(-1))
+          ? [destinationIndex] : []);
+    },
+    onStart: () => { setSelectedSource(null); setExpandedTableauPile(null); },
+    onDrop: ({ pileIndex, cardIndex }, destination) => {
+      const next = moveSpiderStack(history.present, pileIndex, cardIndex, destination);
+      if (next) commit(next);
+    },
+  });
+
+  useEffect(() => { cardDrag.cancel(); }, [history.present]);
+
+  function showNextHint() {
+    setHintCursor((current) => ({
+      state: history.present,
+      index: current?.state === history.present && hints.length > 0
+        ? (current.index + 1) % hints.length : 0,
+    }));
+  }
 
   useEffect(() => {
     if (!hydrated) {
@@ -74,6 +108,7 @@ export function SpiderGameScreen({ mode }: Props) {
   }
 
   function startNewGame() {
+    setHintCursor(null);
     setHistory(
       createHistoryState(createSpiderGame(Math.random, { suitMode: settings.spiderSuitMode })),
     );
@@ -84,6 +119,7 @@ export function SpiderGameScreen({ mode }: Props) {
   }
 
   function restartGame() {
+    setHintCursor(null);
     setHistory((current) => createHistoryState(current.initial));
     setSelectedSource(null);
     setGameMenuOpen(false);
@@ -92,6 +128,7 @@ export function SpiderGameScreen({ mode }: Props) {
   }
 
   function undo() {
+    setHintCursor(null);
     setHistory((current) => {
       const previous = current.past[current.past.length - 1];
 
@@ -113,6 +150,7 @@ export function SpiderGameScreen({ mode }: Props) {
   }
 
   function redo() {
+    setHintCursor(null);
     setHistory((current) => {
       const next = current.future[0];
 
@@ -146,6 +184,7 @@ export function SpiderGameScreen({ mode }: Props) {
   }
 
   function loadSnapshot(snapshot: PersistedGameEnvelope<SpiderState>) {
+    setHintCursor(null);
     setHistory(restoreGameHistory(snapshot));
     setSelectedSource(null);
     setExpandedTableauPile(null);
@@ -227,7 +266,7 @@ export function SpiderGameScreen({ mode }: Props) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.screen}>
+      <View ref={cardDrag.rootRef} onLayout={cardDrag.measureTargets} style={styles.screen}>
         <View style={styles.floatingNavWrap}>
           <View style={styles.floatingNavRow}>
             <Pressable
@@ -297,7 +336,7 @@ export function SpiderGameScreen({ mode }: Props) {
           ) : null}
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={styles.scrollContent} scrollEnabled={!cardDrag.drag} onScroll={cardDrag.measureTargets} scrollEventThrottle={16}>
           <View style={styles.switchRow}>
             <ShortcutPressable
               onPress={startNewGame}
@@ -362,6 +401,14 @@ export function SpiderGameScreen({ mode }: Props) {
             </ShortcutPressable>
             <Pressable
               accessibilityRole="button"
+              disabled={won}
+              onPress={showNextHint}
+              style={({ pressed }) => [styles.switchButton, won && styles.switchButtonDisabled, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.switchButtonText}>Hint</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
               onPress={() => router.push('/rules?game=spider')}
               style={({ pressed }) => [styles.switchButton, pressed && styles.buttonPressed]}
             >
@@ -381,6 +428,13 @@ export function SpiderGameScreen({ mode }: Props) {
             Spider ({suitModeLabel})
           </Text>
           {won ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
+          {hintIndex !== null ? (
+            <Text accessibilityLiveRegion="polite" role="status" style={styles.hintText}>
+              {hints.length > 0
+                ? `Hint ${hintIndex + 1} of ${hints.length}: ${hints[hintIndex]}`
+                : 'No hints available. Undo or start another game.'}
+            </Text>
+          ) : null}
           {settings.spiderDebugTools && snapshotPickerOpen ? (
             <View style={styles.snapshotPanel}>
               {snapshots.spider.map((snapshot) => (
@@ -413,7 +467,7 @@ export function SpiderGameScreen({ mode }: Props) {
               ))}
             </View>
           ) : null}
-          <ScrollView horizontal contentContainerStyle={styles.horizontalBoardContent} showsHorizontalScrollIndicator={false}>
+          <ScrollView horizontal contentContainerStyle={styles.horizontalBoardContent} showsHorizontalScrollIndicator={false} scrollEnabled={!cardDrag.drag} onScroll={cardDrag.measureTargets} scrollEventThrottle={16}>
             <View style={[styles.board, { minWidth: boardMinWidth }]}>
               <View style={styles.stockRow}>
                 <CardStack
@@ -444,33 +498,59 @@ export function SpiderGameScreen({ mode }: Props) {
               </View>
               <View style={styles.tableauRow}>
                 {history.present.tableau.map((pile, pileIndex) => (
-                  <CardStack
-                    cardWidth={cardWidth}
-                    cards={pile}
-                    expanded={expandedTableauPile === pileIndex}
+                  <View
+                    ref={cardDrag.registerTarget(`spider-tableau-${pileIndex}`, pileIndex)}
+                    onLayout={cardDrag.measureTargets}
                     key={`spider-tableau-${pileIndex}`}
-                    onCardPress={selectedSource ? () => handleDestinationPress(pileIndex) : undefined}
-                    onFaceUpCardPress={(cardIndex) => {
-                      if (selectedSource && selectedSource.pileIndex !== pileIndex && handleDestinationPress(pileIndex)) {
-                        return;
-                      }
+                    style={[
+                      styles.tableauTarget,
+                      cardDrag.drag?.destinations.includes(pileIndex) && styles.legalDrop,
+                      cardDrag.drag?.activeDestination === pileIndex && styles.activeDrop,
+                    ]}
+                  >
+                    <CardStack
+                      cardWidth={cardWidth}
+                      cards={pile}
+                      expanded={expandedTableauPile === pileIndex}
+                      hiddenFromIndex={cardDrag.drag?.source.pileIndex === pileIndex ? cardDrag.drag.source.cardIndex : undefined}
+                      onCardDragStart={(cardIndex, payload) => cardDrag.start({ pileIndex, cardIndex }, payload)}
+                      onCardDragMove={(_, payload) => cardDrag.move(payload)}
+                      onCardDragEnd={(_, payload) => cardDrag.end(payload)}
+                      onCardDragCancel={cardDrag.cancel}
+                      onCardPress={selectedSource ? () => handleDestinationPress(pileIndex) : undefined}
+                      onFaceUpCardPress={(cardIndex) => {
+                        if (selectedSource && selectedSource.pileIndex !== pileIndex && handleDestinationPress(pileIndex)) {
+                          return;
+                        }
 
-                      handleCardSelect(pileIndex, cardIndex);
-                    }}
-                    onCardHoldEnd={() => {
-                      setExpandedTableauPile((current) => (current === pileIndex ? null : current));
-                    }}
-                    onCardHoldStart={() => {
-                      setExpandedTableauPile(pileIndex);
-                    }}
-                    placeholderLabel=""
-                    selected={selectedSource?.pileIndex === pileIndex}
-                  />
+                        handleCardSelect(pileIndex, cardIndex);
+                      }}
+                      onCardHoldEnd={() => {
+                        setExpandedTableauPile((current) => (current === pileIndex ? null : current));
+                      }}
+                      onCardHoldStart={() => {
+                        setExpandedTableauPile(pileIndex);
+                      }}
+                      placeholderLabel=""
+                      selected={selectedSource?.pileIndex === pileIndex}
+                    />
+                  </View>
                 ))}
               </View>
             </View>
           </ScrollView>
         </ScrollView>
+        {cardDrag.drag ? (
+          <View pointerEvents="none" style={styles.dragOverlay}>
+            <View style={[styles.dragGhost, {
+              left: cardDrag.drag.x - cardDrag.rootOffset.x,
+              top: cardDrag.drag.y - cardDrag.rootOffset.y,
+              width: cardWidth,
+            }]}>
+              <CardStack cardWidth={cardWidth} cards={cardDrag.drag.cards} placeholderLabel="" selected={cardDrag.drag.activeDestination !== null} />
+            </View>
+          </View>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -581,6 +661,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     alignItems: 'flex-start',
   },
+  tableauTarget: { borderRadius: radius.md },
+  legalDrop: { outlineWidth: 1, outlineStyle: 'solid', outlineColor: palette.accentMuted },
+  activeDrop: { outlineWidth: 2, outlineStyle: 'solid', outlineColor: palette.accent },
+  dragOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 30 },
+  dragGhost: { position: 'absolute', opacity: 0.96 },
   card: {
     backgroundColor: palette.paper,
     borderRadius: radius.lg,
@@ -640,6 +725,11 @@ const styles = StyleSheet.create({
     fontSize: typography.subtitle,
     fontWeight: '700',
   },
+  hintText: {
+    color: palette.paper,
+    fontSize: typography.body,
+    lineHeight: 22,
+  },
   buttonPressed: {
     transform: [{ scale: 0.98 }],
   },
@@ -664,6 +754,26 @@ function canMoveSpiderStack(pile: SpiderTableauCard[], cardIndex: number): boole
   return true;
 }
 
+function getSpiderHints(state: SpiderState): string[] {
+  if (state.completedRuns >= 8) return [];
+  const hints: string[] = [];
+  state.tableau.forEach((pile, sourceIndex) => {
+    pile.forEach((card, cardIndex) => {
+      if (!canMoveSpiderStack(pile, cardIndex)) return;
+      state.tableau.forEach((destination, destinationIndex) => {
+        if (sourceIndex === destinationIndex || (cardIndex === 0 && destination.length === 0)) return;
+        if (!canPlaceSpiderLeadOnDestination(card, destination.at(-1))) return;
+        const run = pile.length - cardIndex > 1 ? 'the run starting with ' : '';
+        hints.push(`Move ${run}${rankLabel(card.rank)} of ${card.suit} from column ${sourceIndex + 1} to column ${destinationIndex + 1}.`);
+      });
+    });
+  });
+  if (state.stock.length >= 10 && state.tableau.every((pile) => pile.length > 0)) {
+    hints.push('Deal a row from the stock.');
+  }
+  return hints;
+}
+
 function moveSpiderStack(
   state: SpiderState,
   sourcePileIndex: number,
@@ -673,7 +783,7 @@ function moveSpiderStack(
   const sourcePile = state.tableau[sourcePileIndex];
   const destinationPile = state.tableau[destinationPileIndex];
 
-  if (!sourcePile || !destinationPile) {
+  if (sourcePileIndex === destinationPileIndex || !sourcePile || !destinationPile) {
     return null;
   }
 

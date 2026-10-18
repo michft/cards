@@ -19,6 +19,7 @@ import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack } from './shared/card-stack';
+import { useCardDrag } from './shared/use-card-drag';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
@@ -72,7 +73,28 @@ export function PyramidGameScreen({ mode }: Props) {
     void saveGame('pyramid', envelope);
   }, [clearGame, history, hydrated, saveGame]);
 
+  const cardDrag = useCardDrag<PyramidSource, PyramidSource>({
+    getCards(source) {
+      const card = getPyramidSourceCard(history.present, source);
+      return card && card.rank !== 13 && isPyramidSourceSelectable(history.present, source) ? [card] : [];
+    },
+    getDestinations(source) {
+      const candidates: PyramidSource[] = [{ zone: 'waste' }];
+      history.present.tableau.forEach((row, rowIndex) => {
+        row.forEach((_, cardIndex) => candidates.push({ zone: 'tableau', rowIndex, cardIndex }));
+      });
+      return candidates.filter((destination) => !isSameSource(source, destination)
+        && removePyramidCards(history.present, [source, destination]) !== history.present);
+    },
+    onStart: () => setSelectedSource(null),
+    onDrop(source, destination) {
+      const next = removePyramidCards(history.present, [source, destination]);
+      if (next !== history.present) commit(next);
+    },
+  });
+
   function clearInteraction() {
+    cardDrag.cancel();
     setGameMenuOpen(false);
     setSelectedSource(null);
     setSnapshotPickerOpen(false);
@@ -216,7 +238,7 @@ export function PyramidGameScreen({ mode }: Props) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.screen}>
+      <View ref={cardDrag.rootRef} onLayout={cardDrag.measureTargets} style={styles.screen}>
         <View style={styles.floatingNavWrap}>
           <View style={styles.floatingNavRow}>
             <Pressable
@@ -286,7 +308,7 @@ export function PyramidGameScreen({ mode }: Props) {
           ) : null}
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={styles.scrollContent} scrollEnabled={!cardDrag.drag}>
           <View style={styles.headerActions}>
             <ActionButton label="New" onPress={startNewGame} shortcut="Cmd/Ctrl+Alt+N" />
             <ActionButton label="Restart" onPress={restartGame} shortcut="Cmd+R" />
@@ -364,6 +386,7 @@ export function PyramidGameScreen({ mode }: Props) {
           {history.present.won ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
 
           <ScrollView
+            scrollEnabled={!cardDrag.drag}
             contentContainerStyle={styles.horizontalBoardContent}
             horizontal
             nestedScrollEnabled
@@ -379,17 +402,29 @@ export function PyramidGameScreen({ mode }: Props) {
                   placeholderLabel={stockCount > 0 ? String(stockCount) : '↺'}
                   variant="back"
                 />
-                <CardStack
-                  cardWidth={cardWidth}
-                  cards={history.present.waste.slice(-1)}
-                  onCardPress={
-                    history.present.waste.length > 0
-                      ? () => handleSourcePress({ zone: 'waste' })
-                      : undefined
-                  }
-                  placeholderLabel=""
-                  selected={selectedSource?.zone === 'waste'}
-                />
+                <View
+                  testID="pyramid-waste"
+                  style={cardDrag.drag?.activeDestination?.zone === 'waste' ? styles.dragTarget : undefined}
+                  ref={cardDrag.registerTarget('waste', { zone: 'waste' })}
+                  onLayout={cardDrag.measureTargets}
+                >
+                  <CardStack
+                    cardWidth={cardWidth}
+                    cards={history.present.waste.slice(-1)}
+                    hiddenFromIndex={cardDrag.drag?.source.zone === 'waste' ? 0 : undefined}
+                    onCardDragStart={(_, payload) => cardDrag.start({ zone: 'waste' }, payload)}
+                    onCardDragMove={(_, payload) => cardDrag.move(payload)}
+                    onCardDragEnd={(_, payload) => cardDrag.end(payload)}
+                    onCardDragCancel={cardDrag.cancel}
+                    onCardPress={
+                      history.present.waste.length > 0
+                        ? () => handleSourcePress({ zone: 'waste' })
+                        : undefined
+                    }
+                    placeholderLabel=""
+                    selected={selectedSource?.zone === 'waste'}
+                  />
+                </View>
                 <View style={styles.metaPanel}>
                   <Text style={styles.metaText}>Removed: {history.present.removedCount}</Text>
                   <Text style={styles.metaText}>
@@ -414,11 +449,26 @@ export function PyramidGameScreen({ mode }: Props) {
                         && isPyramidSourceSelectable(history.present, source);
 
                       return (
-                        <View key={`pyramid-cell-${rowIndex}-${cardIndex}`} style={styles.pyramidCell}>
+                        <View
+                          key={`pyramid-cell-${rowIndex}-${cardIndex}`}
+                          testID={`pyramid-cell-${rowIndex}-${cardIndex}`}
+                          ref={cardDrag.registerTarget(`tableau-${rowIndex}-${cardIndex}`, source)}
+                          onLayout={cardDrag.measureTargets}
+                          style={[
+                            styles.pyramidCell,
+                            isSameSource(cardDrag.drag?.activeDestination ?? null, source) && styles.dragTarget,
+                          ]}
+                        >
                           {card ? (
                             <CardStack
                               cardWidth={cardWidth}
                               cards={[card]}
+                              hiddenFromIndex={isSameSource(cardDrag.drag?.source ?? null, source) ? 0 : undefined}
+                              onCardDragStart={selectable
+                                ? (_, payload) => cardDrag.start(source, payload) : undefined}
+                              onCardDragMove={(_, payload) => cardDrag.move(payload)}
+                              onCardDragEnd={(_, payload) => cardDrag.end(payload)}
+                              onCardDragCancel={cardDrag.cancel}
                               onCardPress={selectable ? () => handleSourcePress(source) : undefined}
                               placeholderLabel=""
                               selected={isSameSource(selectedSource, source)}
@@ -443,6 +493,17 @@ export function PyramidGameScreen({ mode }: Props) {
             </View>
           </ScrollView>
         </ScrollView>
+        {cardDrag.drag ? (
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <View style={{
+              position: 'absolute',
+              left: cardDrag.drag.x - cardDrag.rootOffset.x,
+              top: cardDrag.drag.y - cardDrag.rootOffset.y,
+            }}>
+              <CardStack cardWidth={cardWidth} cards={cardDrag.drag.cards} placeholderLabel="" selected />
+            </View>
+          </View>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -621,6 +682,10 @@ const styles = StyleSheet.create({
   pyramidRow: {
     flexDirection: 'row',
     justifyContent: 'center',
+  },
+  dragTarget: {
+    borderRadius: radius.md,
+    boxShadow: '0px 0px 0px 3px #d7b56d',
   },
   pyramidCell: {
     alignItems: 'center',

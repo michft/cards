@@ -6,6 +6,21 @@ for (const viewport of [{ width: 834, height: 1194 }, { width: 1194, height: 834
   test.describe(`11-inch iPad ${viewport.width}x${viewport.height}`, () => {
     test.use({ viewport, hasTouch: true, isMobile: true });
 
+    test('home previews and Continue fit the iPad', async ({ page }, testInfo) => {
+      await page.goto('/');
+      await expect(page.getByRole('heading', { name: "Mum's Cards" })).toBeVisible();
+      for (const game of games) {
+        const tile = page.getByRole('button', { name: `New ${game}`, exact: true });
+        await expect(tile).toBeInViewport();
+        const box = await tile.boundingBox();
+        expect(box!.width).toBeGreaterThanOrEqual(240);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+      }
+      await expect(page.getByRole('button', { name: 'Continue unavailable', exact: true })).toBeDisabled();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
+      await page.screenshot({ path: testInfo.outputPath('home.png'), fullPage: true });
+    });
+
     test('all games keep touch controls and navigation within the viewport', async ({ page }) => {
       for (const game of games) {
         await page.goto(`/game/${game.toLowerCase()}?mode=new`);
@@ -41,3 +56,20 @@ for (const viewport of [{ width: 834, height: 1194 }, { width: 1194, height: 834
     });
   });
 }
+
+test.describe('narrow home screen', () => {
+  test.use({ viewport: { width: 320, height: 740 }, hasTouch: true, isMobile: true });
+
+  test('game tiles stay inside a phone viewport', async ({ page }) => {
+    await page.goto('/');
+    for (const game of games) {
+      const tile = page.getByRole('button', { name: `New ${game}`, exact: true });
+      await tile.scrollIntoViewIfNeeded();
+      const box = await tile.boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+      await expect(tile).toBeInViewport();
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  });
+});
