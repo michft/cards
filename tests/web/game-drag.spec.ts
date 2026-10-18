@@ -81,6 +81,17 @@ test('Clock active card drags to its matching hour; invalid drops preserve the d
   await resume(page, state);
   await rejectThenMove(page, state, cardLocator(page, active),
     page.getByTestId(`clock-hour-${active.rank === 12 ? 0 : active.rank}`), placeClockActiveCard(state));
+  // A card drawn from an hour must keep its label and drag target reachable.
+  const placed = placeClockActiveCard(state);
+  await drag(page, cardLocator(page, active), page.getByTestId(`clock-hour-${active.rank === 12 ? 0 : active.rank}`));
+  await expect.poll(() => saved(page, 'clock')).toEqual(placed);
+  const next = placed.activeCard;
+  if (!next) throw new Error('Missing active Clock hour fixture');
+  await expect(cardLocator(page, next)).toBeVisible({ timeout: 3000 });
+  await drag(page, cardLocator(page, next), next.rank === 13
+    ? page.getByTestId(`clock-stock-${placed.activeStockPileIndex}`)
+    : page.getByTestId(`clock-hour-${next.rank === 12 ? 0 : next.rank}`));
+  await expect.poll(() => saved(page, 'clock')).toEqual(placeClockActiveCard(placed));
 });
 
 test('Pyramid cards drag onto legal partners; invalid drops preserve the deal', async ({ page }) => {

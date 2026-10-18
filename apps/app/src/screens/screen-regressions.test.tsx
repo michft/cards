@@ -21,6 +21,10 @@ const saveGame = vi.fn<AppModel['saveGame']>();
 const replace = vi.fn();
 const push = vi.fn();
 vi.mock('../state/app-provider', () => ({ useAppModel: () => model }));
+vi.mock('../state/failed-moves', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../state/failed-moves')>(),
+  recordFailedMove: vi.fn(),
+}));
 vi.mock('expo-router', () => ({
   useRouter: () => ({ replace, push }),
   useFocusEffect: (callback: () => void | (() => void)) => useEffect(callback, [callback]),

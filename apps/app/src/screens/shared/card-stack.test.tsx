@@ -12,6 +12,29 @@ const cards: PlayingCard[] = [
 ];
 
 describe('CardStack dragging', () => {
+  it.each([false, true])('only enables a face-down press with an explanation handler: %s', (enabled) => {
+    const selected = vi.fn();
+    const hidden = vi.fn();
+    const started = vi.fn();
+    const ended = vi.fn();
+    const { getByRole } = render(<CardStack cardWidth={64} cards={[{ ...cards[0], faceUp: false }]}
+      onFaceUpCardPress={selected} onFaceDownCardPress={enabled ? hidden : undefined}
+      onCardDragStart={started} onCardDragEnd={ended} placeholderLabel="" />);
+    const source = getByRole('button');
+    fireEvent.mouseDown(source, { clientX: 10, clientY: 10, button: 0 });
+    fireEvent.mouseMove(source, { clientX: 30, clientY: 30, buttons: 1 });
+    fireEvent.mouseUp(document, { clientX: 30, clientY: 30, button: 0 });
+    expect(hidden).toHaveBeenCalledTimes(enabled ? 1 : 0);
+    if (enabled) {
+      expect(hidden).toHaveBeenCalledWith(0);
+      expect(source.getAttribute('aria-label')).toBe('Face-down card');
+    }
+    expect(source.textContent).not.toContain('9');
+    expect(selected).not.toHaveBeenCalled();
+    expect(started).not.toHaveBeenCalled();
+    expect(ended).not.toHaveBeenCalled();
+  });
+
   it('cancels an interrupted drag without committing a drop', async () => {
     const started = vi.fn();
     const ended = vi.fn();

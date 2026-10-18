@@ -23,6 +23,7 @@ const suitSymbols: Record<PlayingCard['suit'], string> = {
 type StackCard = PlayingCard | KlondikeTableauCard;
 
 type Props = {
+  accessibilityLabel?: string;
   cardWidth: number;
   cards: StackCard[];
   emptyState?: 'default' | 'recycle';
@@ -31,6 +32,7 @@ type Props = {
   placeholderLabel: string;
   onCardPress?(): void;
   onFaceUpCardPress?(cardIndex: number): void;
+  onFaceDownCardPress?(cardIndex: number): void;
   onCardDragStart?(cardIndex: number, payload: DragPayload): void;
   onCardDragMove?(cardIndex: number, payload: DragPayload): void;
   onCardDragEnd?(cardIndex: number, payload: DragPayload): void;
@@ -54,6 +56,7 @@ export type DragPayload = {
 };
 
 export function CardStack({
+  accessibilityLabel,
   cardWidth,
   cards,
   emptyState = 'default',
@@ -62,6 +65,7 @@ export function CardStack({
   placeholderLabel,
   onCardPress,
   onFaceUpCardPress,
+  onFaceDownCardPress,
   onCardDragStart,
   onCardDragMove,
   onCardDragEnd,
@@ -96,7 +100,7 @@ export function CardStack({
     }
 
     return (
-      <Pressable accessibilityRole="button" onPress={onCardPress}>
+      <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onCardPress}>
         {placeholder}
       </Pressable>
     );
@@ -143,18 +147,20 @@ export function CardStack({
 
         return (
           <DraggableCardLayer
+            accessibilityLabel={accessibilityLabel ?? (!faceUp && onFaceDownCardPress ? 'Face-down card' : undefined)}
             key={card.id}
             cardHeight={cardHeight}
             cardWidth={cardWidth}
             hidden={hiddenFromIndex !== undefined && index >= hiddenFromIndex}
             disabled={
-              !faceUp ||
               !isInteractiveCard ||
-              (!onCardPress && !onFaceUpCardPress && !onCardDragStart)
+              (faceUp ? !onCardPress && !onFaceUpCardPress && !onCardDragStart : !onFaceDownCardPress)
             }
             left={horizontalOffset}
             onActivate={
-              onFaceUpCardPress && faceUp
+              !faceUp
+                ? onFaceDownCardPress ? () => onFaceDownCardPress(index) : undefined
+                : onFaceUpCardPress
                 ? () => onFaceUpCardPress(index)
                 : onCardPress
             }
@@ -189,6 +195,7 @@ export function CardStack({
 }
 
 function DraggableCardLayer({
+  accessibilityLabel,
   cardHeight,
   cardWidth,
   children,
@@ -204,6 +211,7 @@ function DraggableCardLayer({
   onHoldStart,
   top,
 }: {
+  accessibilityLabel?: string;
   cardHeight: number;
   cardWidth: number;
   children: ReactNode;
@@ -376,6 +384,7 @@ function DraggableCardLayer({
     <View
       accessibilityRole="button"
       ref={containerRef}
+      accessibilityLabel={accessibilityLabel}
       style={[
         styles.cardLayer,
         hidden && styles.hiddenCard,

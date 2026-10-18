@@ -4,6 +4,8 @@
 
 ### Added
 
+- Explain rejected moves across all five games, with rule-specific feedback for tap/drag attempts.
+- Keep up to 200 failed attempts locally with visible-board context, active rules, reasons, Retry, and JSONL training export from Settings.
 - Redesign the home screen with illustrated game layouts, a responsive game grid, and a distinct Continue tile.
 - Drag cards and runs in FreeCell, Spider, Clock, and Pyramid; release on legal destinations and cancel interrupted gestures.
 - Cycle Spider hints with repeated taps, including legal stock deals; reset hints after changing the board.

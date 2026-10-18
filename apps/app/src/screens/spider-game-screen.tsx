@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppModel } from '../state/app-provider';
 import { CardStack } from './shared/card-stack';
 import { useCardDrag } from './shared/use-card-drag';
+import { MoveFeedback, useMoveFeedback } from './shared/use-move-feedback';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
@@ -34,6 +35,7 @@ export function SpiderGameScreen({ mode }: Props) {
     mode === 'resume' && savedGame ? restoreGameHistory(savedGame)
       : createHistoryState(createSpiderGame(Math.random, { suitMode: settings.spiderSuitMode })),
   );
+  const feedback = useMoveFeedback('spider', history.present);
   const [selectedSource, setSelectedSource] = useState<{
     pileIndex: number;
     cardIndex: number;
@@ -47,7 +49,6 @@ export function SpiderGameScreen({ mode }: Props) {
   const rowGap = spacing.sm;
   const boardMinWidth = cardWidth * 10 + rowGap * 9;
   const suitModeLabel = getSpiderSuitModeLabel(history.present.suitMode);
-  const canDealStock = history.present.stock.length >= 10 && history.present.tableau.every((pile) => pile.length > 0);
   const won = history.present.completedRuns >= 8;
   const hints = useMemo(() => getSpiderHints(history.present), [history.present]);
   const hintIndex = hintCursor?.state === history.present ? hintCursor.index : null;
@@ -63,16 +64,18 @@ export function SpiderGameScreen({ mode }: Props) {
         destinationIndex !== pileIndex && canPlaceSpiderLeadOnDestination(pile[cardIndex], destination.at(-1))
           ? [destinationIndex] : []);
     },
-    onStart: () => { setSelectedSource(null); setExpandedTableauPile(null); },
+    onStart: () => { feedback.clear(); setSelectedSource(null); setExpandedTableauPile(null); },
     onDrop: ({ pileIndex, cardIndex }, destination) => {
       const next = moveSpiderStack(history.present, pileIndex, cardIndex, destination);
       if (next) commit(next);
     },
+    onReject: (source, destination) => rejectSpiderMove(source, destination, 'drag'),
   });
 
   useEffect(() => { cardDrag.cancel(); }, [history.present]);
 
   function showNextHint() {
+    feedback.clear();
     setHintCursor((current) => ({
       state: history.present,
       index: current?.state === history.present && hints.length > 0
@@ -203,10 +206,12 @@ export function SpiderGameScreen({ mode }: Props) {
     const card = pile[resolvedCardIndex];
 
     if (!card || !card.faceUp) {
+      rejectSpiderMove({ pileIndex, cardIndex }, null, 'press');
       return;
     }
 
     if (!canMoveSpiderStack(pile, resolvedCardIndex)) {
+      rejectSpiderMove({ pileIndex, cardIndex: resolvedCardIndex }, null, 'press');
       return;
     }
 
@@ -215,19 +220,42 @@ export function SpiderGameScreen({ mode }: Props) {
       selectedSource.pileIndex === pileIndex &&
       selectedSource.cardIndex === resolvedCardIndex
     ) {
+      feedback.clear();
       setSelectedSource(null);
       return;
     }
 
+    feedback.clear();
     setSelectedSource({ pileIndex, cardIndex: resolvedCardIndex });
   }
 
-  function handleDestinationPress(destinationPileIndex: number): boolean {
+  function rejectSpiderMove(source: SpiderSource, destination: number | null, interaction: 'press' | 'drag') {
+    if (destination === source.pileIndex) return;
+    const pile = history.present.tableau[source.pileIndex];
+    const stack = pile?.slice(source.cardIndex) ?? [];
+    const attempt = {
+      kind: 'move' as const,
+      source: { zone: 'tableau', ...source },
+      destination: destination === null ? null : { zone: 'tableau', pileIndex: destination },
+    };
+    if (!pile || !stack.length || stack.some((card) => !card.faceUp)) {
+      feedback.reject('spider.hidden-card', 'Only face-up cards can move. Uncover the cards above a face-down card first.', attempt, interaction);
+    } else if (!canMoveSpiderStack(pile, source.cardIndex)) {
+      feedback.reject('spider.run-suit-order', 'Move a single card or a descending run of the same suit. Mixed suits cannot move together.', attempt, interaction);
+    } else if (destination === null) {
+      feedback.reject('spider.drop-outside', 'Drop the cards on a tableau column. An empty column accepts any valid run.', attempt, interaction);
+    } else {
+      feedback.reject('spider.destination-rank', `Place ${rankLabel(stack[0].rank)} on a card one rank higher, of any suit, or on an empty column.`, attempt, interaction);
+    }
+  }
+
+  function handleDestinationPress(destinationPileIndex: number, explainFailure = true): boolean {
     if (!selectedSource) {
       return false;
     }
 
     if (selectedSource.pileIndex === destinationPileIndex) {
+      feedback.clear();
       setSelectedSource(null);
       return false;
     }
@@ -247,6 +275,7 @@ export function SpiderGameScreen({ mode }: Props) {
     );
 
     if (!next) {
+      if (explainFailure) rejectSpiderMove(selectedSource, destinationPileIndex, 'press');
       return false;
     }
 
@@ -258,6 +287,12 @@ export function SpiderGameScreen({ mode }: Props) {
     const next = dealSpiderStockRow(history.present);
 
     if (!next) {
+      const attempt = { kind: 'deal' as const, source: { zone: 'stock' } };
+      if (history.present.stock.length < 10) {
+        feedback.reject('spider.stock-row', 'Dealing needs ten stock cards, one for each column. No complete row remains.', attempt);
+      } else {
+        feedback.reject('spider.empty-column', 'Fill every empty tableau column before dealing a new row from the stock.', attempt);
+      }
       return;
     }
 
@@ -428,6 +463,7 @@ export function SpiderGameScreen({ mode }: Props) {
             Spider ({suitModeLabel})
           </Text>
           {won ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
+          <MoveFeedback feedback={feedback} />
           {hintIndex !== null ? (
             <Text accessibilityLiveRegion="polite" role="status" style={styles.hintText}>
               {hints.length > 0
@@ -473,7 +509,7 @@ export function SpiderGameScreen({ mode }: Props) {
                 <CardStack
                   cardWidth={cardWidth}
                   cards={history.present.stock.slice(-1)}
-                  onCardPress={canDealStock ? dealSpiderStock : undefined}
+                  onCardPress={dealSpiderStock}
                   placeholderLabel={`${history.present.stock.length}`}
                   variant="back"
                 />
@@ -518,8 +554,11 @@ export function SpiderGameScreen({ mode }: Props) {
                       onCardDragEnd={(_, payload) => cardDrag.end(payload)}
                       onCardDragCancel={cardDrag.cancel}
                       onCardPress={selectedSource ? () => handleDestinationPress(pileIndex) : undefined}
+                      onFaceDownCardPress={(cardIndex) => feedback.reject('spider.hidden-card',
+                        'Only face-up cards can move. Uncover the cards above a face-down card first.',
+                        { kind: 'select', source: { zone: 'tableau', pileIndex, cardIndex } })}
                       onFaceUpCardPress={(cardIndex) => {
-                        if (selectedSource && selectedSource.pileIndex !== pileIndex && handleDestinationPress(pileIndex)) {
+                        if (selectedSource && selectedSource.pileIndex !== pileIndex && handleDestinationPress(pileIndex, false)) {
                           return;
                         }
 

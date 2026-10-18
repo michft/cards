@@ -13,3 +13,5 @@
 - **Game preview:** Decorative example layout on the home screen. It does not show or change a saved deal.
 - **Drag move:** Explicitly move the dragged card or run to a legal destination at release. Invalid or interrupted drags do not change the deal.
 - **Hint cycle:** Repeated Hint taps show successive suggestions for the same position, then wrap. Changing the board resets the cycle.
+- **Move explanation:** Rule-specific feedback after an attempted action is rejected; it does not change the deal or history.
+- **Failed-move log:** Latest 200 rejected attempts saved separately from game progress, with visible-board context, active rules, attempted action, and rejection reason. Exportable as JSONL for training.

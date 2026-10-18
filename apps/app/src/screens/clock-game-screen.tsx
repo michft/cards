@@ -13,6 +13,7 @@ import { palette, radius, spacing, typography } from '../theme';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack } from './shared/card-stack';
 import { useCardDrag } from './shared/use-card-drag';
+import { MoveFeedback, useMoveFeedback } from './shared/use-move-feedback';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
@@ -50,6 +51,7 @@ export function ClockGameScreen({ mode }: Props) {
   );
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
+  const feedback = useMoveFeedback('clock', history.present);
   const availableWidth = Math.max(320, width - spacing.lg * 2);
   const cardWidth = Math.max(42, Math.min(64, availableWidth / 9));
   const cardHeight = Math.round(cardWidth * 1.42);
@@ -115,9 +117,19 @@ export function ClockGameScreen({ mode }: Props) {
       return [{ zone: 'hour', hourIndex: getHourIndexForRank(active.rank) }];
     },
     onDrop() { place(); },
+    onStart: feedback.clear,
+    onCancel: feedback.clear,
+    onReject(_, destination) {
+      if (destination?.zone === 'hour' && activeSource?.zone === 'hour'
+        && destination.hourIndex === activeSource.hourIndex) return;
+      if (destination?.zone === 'stock' && activeSource?.zone === 'stock'
+        && destination.pileIndex === activeSource.pileIndex) return;
+      rejectDestination(destination, 'drag');
+    },
   });
 
   function clearInteraction() {
+    feedback.clear();
     cardDrag.cancel();
     setGameMenuOpen(false);
     setSnapshotPickerOpen(false);
@@ -148,7 +160,10 @@ export function ClockGameScreen({ mode }: Props) {
 
     if (next !== history.present) {
       commit(next);
+      return;
     }
+
+    rejectDestination({ zone: 'stock', pileIndex });
   }
 
   function place() {
@@ -163,10 +178,32 @@ export function ClockGameScreen({ mode }: Props) {
     const active = history.present.activeCard;
 
     if (!active || getHourIndexForRank(active.rank) !== hourIndex) {
+      rejectDestination({ zone: 'hour', hourIndex });
       return;
     }
 
     place();
+  }
+
+  function rejectDestination(destination: ClockDestination | null, interaction: 'press' | 'drag' = 'press') {
+    const active = history.present.activeCard;
+    const attempt = { kind: active ? 'move' as const : 'draw' as const,
+      source: active ? { ...activeSource, cardId: active.id } : undefined, destination };
+    if (history.present.won || history.present.lost) {
+      feedback.reject('game-finished', 'This game has ended. Undo a move or start a new game.', attempt, interaction);
+    } else if (!active) {
+      if (destination?.zone === 'stock') {
+        feedback.reject('stock-unavailable', 'That stock pile is empty or its King has already returned. Choose another stock pile.', attempt, interaction);
+      } else {
+        feedback.reject('draw-first', 'Draw from an unfinished stock pile in the centre before placing a card.', attempt, interaction);
+      }
+    } else if (active.rank === 13) {
+      feedback.reject('king-origin', `Return this King to its original stock pile${history.present.activeStockPileIndex == null ? '' : ` (${history.present.activeStockPileIndex + 1})`}.`, attempt, interaction);
+    } else if (destination?.zone === 'stock') {
+      feedback.reject('active-card-first', `Place the active ${rankLabel(active.rank)} on the ${rankLabel(active.rank)} hour before drawing another stock card.`, attempt, interaction);
+    } else {
+      feedback.reject('matching-hour', `Place the active ${rankLabel(active.rank)} on the ${rankLabel(active.rank)} hour. Cards must match their hour.`, attempt, interaction);
+    }
   }
 
   function handleKingPilePress() {
@@ -391,6 +428,7 @@ export function ClockGameScreen({ mode }: Props) {
 
           {history.present.won ? <Text style={styles.winText}>Clock solved.</Text> : null}
           {history.present.lost ? <Text style={styles.lossText}>Clock lost.</Text> : null}
+          <MoveFeedback feedback={feedback} />
 
           <ScrollView
             scrollEnabled={!cardDrag.drag}
@@ -424,6 +462,7 @@ export function ClockGameScreen({ mode }: Props) {
 
               return (
                 <Pressable
+                  accessibilityLabel={`${hourLabels[hourIndex]} hour`}
                   accessibilityRole="button"
                   key={`clock-hour-${hourIndex}`}
                   testID={`clock-hour-${hourIndex}`}
@@ -546,11 +585,6 @@ export function ClockGameScreen({ mode }: Props) {
                     && history.present.activeCard.rank === 13
                     && history.present.activeStockPileIndex === pileIndex,
                 );
-                const canStartFromPile = Boolean(
-                  history.present.activeCard === null
-                    && top
-                    && !completedStockPiles.includes(pileIndex),
-                );
                 const topIsReturnedKing = Boolean(top && returnedKingIds.includes(top.id));
                 const variant = stockActiveCard || topIsReturnedKing ? 'face' : 'back';
 
@@ -564,6 +598,7 @@ export function ClockGameScreen({ mode }: Props) {
                     onLayout={cardDrag.measureTargets}
                   >
                     <CardStack
+                      accessibilityLabel={stockActiveCard ? undefined : `Stock pile ${pileIndex + 1}`}
                       cardWidth={cardWidth}
                       cards={stockActiveCard ? [stockActiveCard] : top ? [top] : []}
                       hiddenFromIndex={stockActiveCard && cardDrag.drag?.source === stockActiveCard.id ? 0 : undefined}
@@ -577,9 +612,7 @@ export function ClockGameScreen({ mode }: Props) {
                           ? handleActivePress
                           : kingReturnTarget
                             ? handleKingPilePress
-                          : canStartFromPile
-                            ? () => drawFromStockPile(pileIndex)
-                          : undefined
+                          : () => drawFromStockPile(pileIndex)
                       }
                       placeholderLabel=""
                       selected={Boolean(stockActiveCard)}
@@ -598,6 +631,7 @@ export function ClockGameScreen({ mode }: Props) {
 
               return (
                 <Text
+                  pointerEvents="none"
                   key={`clock-label-${hourIndex}`}
                   style={[
                     styles.clockHintLabel,
