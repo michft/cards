@@ -19,6 +19,7 @@ import { createGameHistory as createHistoryState, persistGameHistory, restoreGam
 import { CardStack } from './shared/card-stack';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
+import { useCardDrag } from './shared/use-card-drag';
 
 type HistoryState = GameHistory<FreeCellState>;
 
@@ -58,6 +59,32 @@ export function FreeCellGameScreen({ mode }: Props) {
   const topRowWidth = cardWidth * 8 + rowGap * 7;
   const tableauRowWidth = cardWidth * 8 + rowGap * 7;
   const boardMinWidth = Math.max(topRowWidth, tableauRowWidth);
+  const cardDrag = useCardDrag<FreeCellSource, FreeCellDestination>({
+    getCards: (source) => {
+      if (source.zone === 'tableau') return history.present.tableau[source.pileIndex].slice(source.cardIndex);
+      const card = history.present.freeCells[source.cellIndex];
+      return card ? [card] : [];
+    },
+    getDestinations: (source) => getFreeCellDestinations(history.present, source, tableauBuildPolicy),
+    onDrop: (source, destination) => {
+      const next = applyFreeCellMove(history.present, source, destination, { tableauBuildPolicy });
+      if (JSON.stringify(next) !== JSON.stringify(history.present)) commit(next);
+    },
+    onStart: (source) => {
+      setOffloadActive(false);
+      setSelectedSource(source);
+      setExpandedTableauPile(null);
+      setHintText(null);
+      setHintCycleIndex(0);
+    },
+    onCancel: () => setSelectedSource(null),
+  });
+
+  function dropStyle(destination: FreeCellDestination) {
+    const legal = cardDrag.drag?.destinations.some((item) => JSON.stringify(item) === JSON.stringify(destination));
+    const active = cardDrag.drag?.activeDestination && JSON.stringify(cardDrag.drag.activeDestination) === JSON.stringify(destination);
+    return [styles.dropTarget, legal && styles.dropTargetLegal, active && styles.dropTargetActive];
+  }
 
   useEffect(() => {
     if (!hydrated) {
@@ -119,6 +146,7 @@ export function FreeCellGameScreen({ mode }: Props) {
   }, [history.present, offloadActive, tableauBuildPolicy]);
 
   function clearInteraction() {
+    cardDrag.cancel();
     setOffloadActive(false);
     setGameMenuOpen(false);
     setSelectedSource(null);
@@ -274,7 +302,7 @@ export function FreeCellGameScreen({ mode }: Props) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.screen}>
+      <View ref={cardDrag.rootRef} onLayout={cardDrag.measureTargets} style={styles.screen}>
         <View style={styles.floatingNavWrap}>
           <View style={styles.floatingNavRow}>
             <Pressable
@@ -344,7 +372,7 @@ export function FreeCellGameScreen({ mode }: Props) {
           ) : null}
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView scrollEnabled={!cardDrag.drag} onScroll={cardDrag.measureTargets} contentContainerStyle={styles.scrollContent}>
           <View style={styles.headerActions}>
             <ActionButton label="New" onPress={startNewGame} shortcut="Cmd/Ctrl+Alt+N" />
             <ActionButton label="Restart" onPress={restartGame} shortcut="Cmd+R" />
@@ -428,82 +456,122 @@ export function FreeCellGameScreen({ mode }: Props) {
           <ScrollView
             contentContainerStyle={styles.horizontalBoardContent}
             horizontal
+            scrollEnabled={!cardDrag.drag}
+            onScroll={cardDrag.measureTargets}
             nestedScrollEnabled
             showsHorizontalScrollIndicator={false}
           >
             <View style={[styles.board, { minWidth: boardMinWidth }]}>
               <View style={styles.topRow}>
                 {history.present.freeCells.map((card, cellIndex) => (
-                  <CardStack
-                    cardWidth={cardWidth}
-                    cards={card ? [{ ...card, faceUp: true }] : []}
+                  <View
                     key={`cell-${cellIndex}`}
-                    onCardPress={
-                      card || selectedSource
-                        ? () => {
-                            if (selectedSource && handleDestinationPress({ zone: 'cell', cellIndex })) return;
-                            if (card) handleSourcePress({ zone: 'cell', cellIndex });
-                          }
-                        : undefined
-                    }
-                    placeholderLabel="Free"
-                    selected={
-                      selectedSource?.zone === 'cell' && selectedSource.cellIndex === cellIndex
-                    }
-                  />
+                    ref={cardDrag.registerTarget(`cell-${cellIndex}`, { zone: 'cell', cellIndex })}
+                    onLayout={cardDrag.measureTargets}
+                    style={dropStyle({ zone: 'cell', cellIndex })}
+                  >
+                    <CardStack
+                      cardWidth={cardWidth}
+                      cards={card ? [{ ...card, faceUp: true }] : []}
+                      hiddenFromIndex={cardDrag.drag?.source.zone === 'cell' && cardDrag.drag.source.cellIndex === cellIndex ? 0 : undefined}
+                      onCardDragStart={(_, payload) => cardDrag.start({ zone: 'cell', cellIndex }, payload)}
+                      onCardDragMove={(_, payload) => cardDrag.move(payload)}
+                      onCardDragEnd={(_, payload) => cardDrag.end(payload)}
+                      onCardDragCancel={cardDrag.cancel}
+                      onCardPress={
+                        card || selectedSource
+                          ? () => {
+                              if (selectedSource && handleDestinationPress({ zone: 'cell', cellIndex })) return;
+                              if (card) handleSourcePress({ zone: 'cell', cellIndex });
+                            }
+                          : undefined
+                      }
+                      placeholderLabel="Free"
+                      selected={
+                        selectedSource?.zone === 'cell' && selectedSource.cellIndex === cellIndex
+                      }
+                    />
+                  </View>
                 ))}
                 {history.present.foundations.map((pile, pileIndex) => (
-                  <CardStack
-                    cardWidth={cardWidth}
-                    cards={pile.slice(-1).map((card) => ({ ...card, faceUp: true }))}
+                  <View
                     key={`foundation-${pileIndex}`}
-                    onCardPress={
-                      selectedSource
-                        ? () => handleDestinationPress({ zone: 'foundation', pileIndex })
-                        : undefined
-                    }
-                    placeholderLabel="A"
-                  />
+                    ref={cardDrag.registerTarget(`foundation-${pileIndex}`, { zone: 'foundation', pileIndex })}
+                    onLayout={cardDrag.measureTargets}
+                    style={dropStyle({ zone: 'foundation', pileIndex })}
+                  >
+                    <CardStack
+                      cardWidth={cardWidth}
+                      cards={pile.slice(-1).map((card) => ({ ...card, faceUp: true }))}
+                      onCardPress={
+                        selectedSource
+                          ? () => handleDestinationPress({ zone: 'foundation', pileIndex })
+                          : undefined
+                      }
+                      placeholderLabel="A"
+                    />
+                  </View>
                 ))}
               </View>
 
               <View style={styles.tableauRow}>
                 {history.present.tableau.map((pile, pileIndex) => (
-                  <CardStack
-                    cardWidth={cardWidth}
-                    cards={pile.map((card) => ({ ...card, faceUp: true }))}
-                    expanded={expandedTableauPile === pileIndex}
+                  <View
                     key={`tableau-${pileIndex}`}
-                    onCardPress={
-                      selectedSource
-                        ? () => handleDestinationPress({ zone: 'tableau', pileIndex })
-                        : undefined
-                    }
-                    onFaceUpCardPress={(cardIndex) => {
-                      if (selectedSource && selectedSource.zone === 'tableau' && selectedSource.pileIndex === pileIndex) {
-                        handleSourcePress({ zone: 'tableau', pileIndex, cardIndex });
-                        return;
+                    ref={cardDrag.registerTarget(`tableau-${pileIndex}`, { zone: 'tableau', pileIndex })}
+                    onLayout={cardDrag.measureTargets}
+                    style={dropStyle({ zone: 'tableau', pileIndex })}
+                  >
+                    <CardStack
+                      cardWidth={cardWidth}
+                      cards={pile.map((card) => ({ ...card, faceUp: true }))}
+                      expanded={expandedTableauPile === pileIndex}
+                      hiddenFromIndex={cardDrag.drag?.source.zone === 'tableau' && cardDrag.drag.source.pileIndex === pileIndex ? cardDrag.drag.source.cardIndex : undefined}
+                      onCardDragStart={(cardIndex, payload) => cardDrag.start({ zone: 'tableau', pileIndex, cardIndex }, payload)}
+                      onCardDragMove={(_, payload) => cardDrag.move(payload)}
+                      onCardDragEnd={(_, payload) => cardDrag.end(payload)}
+                      onCardDragCancel={cardDrag.cancel}
+                      onCardPress={
+                        selectedSource
+                          ? () => handleDestinationPress({ zone: 'tableau', pileIndex })
+                          : undefined
                       }
-                      if (selectedSource && handleDestinationPress({ zone: 'tableau', pileIndex })) return;
+                      onFaceUpCardPress={(cardIndex) => {
+                        if (selectedSource && selectedSource.zone === 'tableau' && selectedSource.pileIndex === pileIndex) {
+                          handleSourcePress({ zone: 'tableau', pileIndex, cardIndex });
+                          return;
+                        }
+                        if (selectedSource && handleDestinationPress({ zone: 'tableau', pileIndex })) return;
 
-                      handleSourcePress({ zone: 'tableau', pileIndex, cardIndex });
-                    }}
-                    onCardHoldEnd={() => {
-                      setExpandedTableauPile((current) => (current === pileIndex ? null : current));
-                    }}
-                    onCardHoldStart={() => {
-                      setExpandedTableauPile(pileIndex);
-                    }}
-                    placeholderLabel=""
-                    selected={
-                      selectedSource?.zone === 'tableau' && selectedSource.pileIndex === pileIndex
-                    }
-                  />
+                        handleSourcePress({ zone: 'tableau', pileIndex, cardIndex });
+                      }}
+                      onCardHoldEnd={() => {
+                        setExpandedTableauPile((current) => (current === pileIndex ? null : current));
+                      }}
+                      onCardHoldStart={() => {
+                        setExpandedTableauPile(pileIndex);
+                      }}
+                      placeholderLabel=""
+                      selected={
+                        selectedSource?.zone === 'tableau' && selectedSource.pileIndex === pileIndex
+                      }
+                    />
+                  </View>
                 ))}
               </View>
             </View>
           </ScrollView>
         </ScrollView>
+        {cardDrag.drag ? (
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <View style={[styles.dragGhost, {
+              left: cardDrag.drag.x - cardDrag.rootOffset.x,
+              top: cardDrag.drag.y - cardDrag.rootOffset.y,
+            }]}>
+              <CardStack cardWidth={cardWidth} cards={cardDrag.drag.cards} placeholderLabel="" selected />
+            </View>
+          </View>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -555,12 +623,20 @@ function canMoveFreeCellSource(
   source: FreeCellSource,
   policy: 'any' | 'red-black' | 'alternate-red-black' | 'suit-matching',
 ): boolean {
+  return getFreeCellDestinations(state, source, policy).length > 0;
+}
+
+function getFreeCellDestinations(
+  state: FreeCellState,
+  source: FreeCellSource,
+  policy: 'any' | 'red-black' | 'alternate-red-black' | 'suit-matching',
+): FreeCellDestination[] {
   const destinations: FreeCellDestination[] = [
     ...state.tableau.map((_, pileIndex) => ({ zone: 'tableau' as const, pileIndex })),
     ...state.freeCells.map((_, cellIndex) => ({ zone: 'cell' as const, cellIndex })),
     ...state.foundations.map((_, pileIndex) => ({ zone: 'foundation' as const, pileIndex })),
   ];
-  return destinations.some((destination) => {
+  return destinations.filter((destination) => {
     if (source.zone === 'tableau' && destination.zone === 'tableau' && source.pileIndex === destination.pileIndex) return false;
     if (source.zone === 'cell' && destination.zone === 'cell' && source.cellIndex === destination.cellIndex) return false;
     return JSON.stringify(applyFreeCellMove(state, source, destination, { tableauBuildPolicy: policy })) !== JSON.stringify(state);
@@ -771,6 +847,10 @@ function ActionButton({
 }
 
 const styles = StyleSheet.create({
+  dropTarget: { borderRadius: radius.md, minHeight: 44 },
+  dropTargetLegal: { boxShadow: '0px 0px 0px 2px rgba(215, 181, 109, 0.5)' },
+  dropTargetActive: { boxShadow: '0px 0px 0px 3px #d7b56d' },
+  dragGhost: { position: 'absolute', opacity: 0.92 },
   safeArea: {
     flex: 1,
     backgroundColor: palette.table,

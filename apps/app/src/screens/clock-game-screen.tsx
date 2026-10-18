@@ -12,10 +12,12 @@ import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack } from './shared/card-stack';
+import { useCardDrag } from './shared/use-card-drag';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 
 type HistoryState = GameHistory<ClockState>;
+type ClockDestination = { zone: 'hour'; hourIndex: number } | { zone: 'stock'; pileIndex: number };
 
 type Props = {
   mode: 'new' | 'resume';
@@ -98,7 +100,25 @@ export function ClockGameScreen({ mode }: Props) {
     void saveGame('clock', envelope);
   }, [clearGame, history, hydrated, saveGame]);
 
+  const cardDrag = useCardDrag<string, ClockDestination>({
+    getCards(cardId) {
+      const active = history.present.activeCard;
+      return active?.id === cardId ? [active] : [];
+    },
+    getDestinations() {
+      const active = history.present.activeCard;
+      if (!active || history.present.won || history.present.lost) return [];
+      if (active.rank === 13) {
+        const pileIndex = history.present.activeStockPileIndex;
+        return pileIndex === null || pileIndex === undefined ? [] : [{ zone: 'stock', pileIndex }];
+      }
+      return [{ zone: 'hour', hourIndex: getHourIndexForRank(active.rank) }];
+    },
+    onDrop() { place(); },
+  });
+
   function clearInteraction() {
+    cardDrag.cancel();
     setGameMenuOpen(false);
     setSnapshotPickerOpen(false);
   }
@@ -229,7 +249,7 @@ export function ClockGameScreen({ mode }: Props) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.screen}>
+      <View ref={cardDrag.rootRef} onLayout={cardDrag.measureTargets} style={styles.screen}>
         <View style={styles.floatingNavWrap}>
           <View style={styles.floatingNavRow}>
             <Pressable
@@ -299,7 +319,7 @@ export function ClockGameScreen({ mode }: Props) {
           ) : null}
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={styles.scrollContent} scrollEnabled={!cardDrag.drag}>
           <View style={styles.headerActions}>
             <ActionButton label="New" onPress={startNewGame} shortcut="Cmd/Ctrl+Alt+N" />
             <ActionButton label="Restart" onPress={restartGame} shortcut="Cmd+R" />
@@ -373,6 +393,7 @@ export function ClockGameScreen({ mode }: Props) {
           {history.present.lost ? <Text style={styles.lossText}>Clock lost.</Text> : null}
 
           <ScrollView
+            scrollEnabled={!cardDrag.drag}
             horizontal
             nestedScrollEnabled
             contentContainerStyle={[styles.clockBoardScrollContent, { paddingHorizontal: boardMargin }]}
@@ -405,9 +426,14 @@ export function ClockGameScreen({ mode }: Props) {
                 <Pressable
                   accessibilityRole="button"
                   key={`clock-hour-${hourIndex}`}
+                  testID={`clock-hour-${hourIndex}`}
+                  ref={cardDrag.registerTarget(`hour-${hourIndex}`, { zone: 'hour', hourIndex })}
+                  onLayout={cardDrag.measureTargets}
                   onPress={() => handleHourPress(hourIndex)}
                   style={[
                     styles.hourSlot,
+                    cardDrag.drag?.activeDestination?.zone === 'hour'
+                      && cardDrag.drag.activeDestination.hourIndex === hourIndex && styles.dragTarget,
                     {
                       height: slotHeight,
                       left: slotLeft,
@@ -439,7 +465,7 @@ export function ClockGameScreen({ mode }: Props) {
                         <View
                           key={`${card.id}-${isActiveCard ? 'active' : 'pile'}`}
                           style={[
-                            showFace ? styles.clockPlacedFaceCard : styles.clockBackCard,
+                            isActiveCard ? styles.activeCard : showFace ? styles.clockPlacedFaceCard : styles.clockBackCard,
                             {
                               height: cardHeight,
                               left:
@@ -455,7 +481,20 @@ export function ClockGameScreen({ mode }: Props) {
                             },
                           ]}
                         >
-                          {showFace ? (
+                          {isActiveCard ? (
+                            <CardStack
+                              cardWidth={cardWidth}
+                              cards={[card]}
+                              hiddenFromIndex={cardDrag.drag?.source === card.id ? 0 : undefined}
+                              onCardPress={handleActivePress}
+                              onCardDragStart={(_, payload) => cardDrag.start(card.id, payload)}
+                              onCardDragMove={(_, payload) => cardDrag.move(payload)}
+                              onCardDragEnd={(_, payload) => cardDrag.end(payload)}
+                              onCardDragCancel={cardDrag.cancel}
+                              placeholderLabel=""
+                              selected
+                            />
+                          ) : showFace ? (
                             <>
                               <Text
                                 style={[
@@ -516,23 +555,37 @@ export function ClockGameScreen({ mode }: Props) {
                 const variant = stockActiveCard || topIsReturnedKing ? 'face' : 'back';
 
                 return (
-                  <CardStack
-                    cardWidth={cardWidth}
-                    cards={stockActiveCard ? [stockActiveCard] : top ? [top] : []}
+                  <View
                     key={`clock-stock-pile-${pileIndex}`}
-                    onCardPress={
-                      stockActiveCard
-                        ? handleActivePress
-                        : kingReturnTarget
-                          ? handleKingPilePress
-                        : canStartFromPile
-                          ? () => drawFromStockPile(pileIndex)
-                        : undefined
-                    }
-                    placeholderLabel=""
-                    selected={Boolean(stockActiveCard)}
-                    variant={variant}
-                  />
+                    testID={`clock-stock-${pileIndex}`}
+                    style={cardDrag.drag?.activeDestination?.zone === 'stock'
+                      && cardDrag.drag.activeDestination.pileIndex === pileIndex ? styles.dragTarget : undefined}
+                    ref={cardDrag.registerTarget(`stock-${pileIndex}`, { zone: 'stock', pileIndex })}
+                    onLayout={cardDrag.measureTargets}
+                  >
+                    <CardStack
+                      cardWidth={cardWidth}
+                      cards={stockActiveCard ? [stockActiveCard] : top ? [top] : []}
+                      hiddenFromIndex={stockActiveCard && cardDrag.drag?.source === stockActiveCard.id ? 0 : undefined}
+                      onCardDragStart={stockActiveCard
+                        ? (_, payload) => cardDrag.start(stockActiveCard.id, payload) : undefined}
+                      onCardDragMove={(_, payload) => cardDrag.move(payload)}
+                      onCardDragEnd={(_, payload) => cardDrag.end(payload)}
+                      onCardDragCancel={cardDrag.cancel}
+                      onCardPress={
+                        stockActiveCard
+                          ? handleActivePress
+                          : kingReturnTarget
+                            ? handleKingPilePress
+                          : canStartFromPile
+                            ? () => drawFromStockPile(pileIndex)
+                          : undefined
+                      }
+                      placeholderLabel=""
+                      selected={Boolean(stockActiveCard)}
+                      variant={variant}
+                    />
+                  </View>
                 );
               })}
             </View>
@@ -561,6 +614,17 @@ export function ClockGameScreen({ mode }: Props) {
             </View>
           </ScrollView>
         </ScrollView>
+        {cardDrag.drag ? (
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <View style={{
+              position: 'absolute',
+              left: cardDrag.drag.x - cardDrag.rootOffset.x,
+              top: cardDrag.drag.y - cardDrag.rootOffset.y,
+            }}>
+              <CardStack cardWidth={cardWidth} cards={cardDrag.drag.cards} placeholderLabel="" selected />
+            </View>
+          </View>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -733,6 +797,13 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   hourSlot: {
+    position: 'absolute',
+  },
+  dragTarget: {
+    borderRadius: radius.md,
+    boxShadow: '0px 0px 0px 3px #d7b56d',
+  },
+  activeCard: {
     position: 'absolute',
   },
   clockPlacedFaceCard: {

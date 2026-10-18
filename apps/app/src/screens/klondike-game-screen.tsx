@@ -511,6 +511,12 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     });
   }
 
+  function cancelDrag() {
+    setDragState(null);
+    setSelectedSource(null);
+    setSelectedAtMs(null);
+  }
+
   function handleDragEnd(payload: DragGesturePayload) {
     const currentDrag = dragState;
 
@@ -703,6 +709,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
               }
               layoutMode="waste"
               onCardPress={history.present.waste.length > 0 ? () => handleSourcePress({ zone: 'waste' }) : undefined}
+              onCardDragCancel={cancelDrag}
               onCardDragEnd={
                 history.present.waste.length > 0 ? (_, payload) => handleDragEnd(payload) : undefined
               }
@@ -749,7 +756,8 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                       ? () => handleSourcePress({ zone: 'foundation', pileIndex })
                       : undefined
                 }
-                onCardDragEnd={
+                onCardDragCancel={cancelDrag}
+              onCardDragEnd={
                   pile.length > 0 ? (_, payload) => handleDragEnd(payload) : undefined
                 }
                 onCardDragMove={
@@ -796,7 +804,8 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
                     ? dragState.source.cardIndex
                     : undefined
                 }
-                onCardDragEnd={(_, payload) => handleDragEnd(payload)}
+                onCardDragCancel={cancelDrag}
+              onCardDragEnd={(_, payload) => handleDragEnd(payload)}
                 onCardDragMove={(_, payload) => handleDragMove(payload)}
                 onCardDragStart={(cardIndex, payload) =>
                   handleDragStart({ zone: 'tableau', pileIndex, cardIndex }, payload)

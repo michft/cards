@@ -34,6 +34,7 @@ type Props = {
   onCardDragStart?(cardIndex: number, payload: DragPayload): void;
   onCardDragMove?(cardIndex: number, payload: DragPayload): void;
   onCardDragEnd?(cardIndex: number, payload: DragPayload): void;
+  onCardDragCancel?(): void;
   onCardHoldEnd?(): void;
   onCardHoldStart?(): void;
   hiddenFromIndex?: number;
@@ -64,6 +65,7 @@ export function CardStack({
   onCardDragStart,
   onCardDragMove,
   onCardDragEnd,
+  onCardDragCancel,
   onCardHoldEnd,
   onCardHoldStart,
   hiddenFromIndex,
@@ -156,6 +158,7 @@ export function CardStack({
                 ? () => onFaceUpCardPress(index)
                 : onCardPress
             }
+            onDragCancel={onCardDragCancel}
             onDragEnd={
               faceUp && isInteractiveCard && onCardDragEnd
                 ? (payload) => onCardDragEnd(index, payload)
@@ -194,6 +197,7 @@ function DraggableCardLayer({
   left,
   onActivate,
   onDragEnd,
+  onDragCancel,
   onDragMove,
   onDragStart,
   onHoldEnd,
@@ -208,6 +212,7 @@ function DraggableCardLayer({
   left?: number;
   onActivate?(): void;
   onDragEnd?(payload: DragPayload): void;
+  onDragCancel?(): void;
   onDragMove?(payload: DragPayload): void;
   onDragStart?(payload: DragPayload): void;
   onHoldEnd?(): void;
@@ -217,10 +222,13 @@ function DraggableCardLayer({
   const containerRef = useRef<View | null>(null);
   const didDragRef = useRef(false);
   const dragStartedRef = useRef(false);
+  const dragStartDeliveredRef = useRef(false);
+  const gestureEpochRef = useRef(0);
   const holdTriggeredRef = useRef(false);
   const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
+    gestureEpochRef.current += 1;
     if (holdTimeoutRef.current !== null) {
       clearTimeout(holdTimeoutRef.current);
     }
@@ -231,7 +239,9 @@ function DraggableCardLayer({
     pageY: number,
     callback: (payload: DragPayload) => void,
   ) {
+    const epoch = gestureEpochRef.current;
     containerRef.current?.measureInWindow((x, y, width, height) => {
+      if (gestureEpochRef.current !== epoch) return;
       callback({
         layout: {
           x,
@@ -277,8 +287,10 @@ function DraggableCardLayer({
           return Math.abs(gestureState.dx) > 4 || Math.abs(gestureState.dy) > 4;
         },
         onPanResponderGrant: () => {
+          gestureEpochRef.current += 1;
           didDragRef.current = false;
           dragStartedRef.current = false;
+          dragStartDeliveredRef.current = false;
           holdTriggeredRef.current = false;
 
           if (onHoldStart) {
@@ -305,7 +317,10 @@ function DraggableCardLayer({
 
           if (!dragStartedRef.current) {
             dragStartedRef.current = true;
-            measurePayload(event.nativeEvent.pageX, event.nativeEvent.pageY, onDragStart);
+            measurePayload(event.nativeEvent.pageX, event.nativeEvent.pageY, (payload) => {
+              dragStartDeliveredRef.current = true;
+              onDragStart(payload);
+            });
             return;
           }
 
@@ -318,7 +333,15 @@ function DraggableCardLayer({
 
           if (dragStartedRef.current && onDragEnd) {
             finishHold();
-            measurePayload(event.nativeEvent.pageX, event.nativeEvent.pageY, onDragEnd);
+            // Invalidate queued moves while allowing this release measurement to finish.
+            gestureEpochRef.current += 1;
+            measurePayload(event.nativeEvent.pageX, event.nativeEvent.pageY, (payload) => {
+              if (!dragStartDeliveredRef.current) {
+                dragStartDeliveredRef.current = true;
+                onDragStart?.(payload);
+              }
+              onDragEnd(payload);
+            });
             return;
           }
 
@@ -333,19 +356,20 @@ function DraggableCardLayer({
             onActivate?.();
           }
         },
-        onPanResponderTerminate: (event) => {
+        onPanResponderTerminate: () => {
+          gestureEpochRef.current += 1;
           clearHoldTimer();
 
-          if (dragStartedRef.current && onDragEnd) {
+          if (dragStartedRef.current) {
             finishHold();
-            measurePayload(event.nativeEvent.pageX, event.nativeEvent.pageY, onDragEnd);
+            onDragCancel?.();
             return;
           }
 
           finishHold();
         },
       }),
-    [disabled, onActivate, onDragEnd, onDragMove, onDragStart, onHoldEnd, onHoldStart],
+    [disabled, onActivate, onDragCancel, onDragEnd, onDragMove, onDragStart, onHoldEnd, onHoldStart],
   );
 
   return (

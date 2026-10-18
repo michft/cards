@@ -11,6 +11,8 @@ The Home Screen app can have separate website storage from Safari. Set it up in 
 
 Clock, FreeCell, Klondike, Pyramid, Spider, Rules, and Settings are included. Games, snapshots, and Undo/Redo history save locally on this iPad. No account or network connection is needed after setup.
 
+Choose a game from its illustrated home-screen tile. During play, drag cards or runs onto legal destinations, or keep using taps. In Clock, drag the active card to its hour; Kings return to their original stock pile. In Pyramid, drag a card onto its partner; tap lone Kings to remove them. Invalid or interrupted drags leave the deal unchanged. In Spider, tap **Hint** again to see the next suggestion; changing the board starts the hint cycle over.
+
 Keep the app's website data. Clearing it can erase saves and the offline copy; iPadOS can also evict website storage. If **Offline setup incomplete** appears, reconnect and choose **Retry offline setup** before relying on offline play again. Offline readiness confirms app files are available; it does not clear a separate save-error message.
 
 ## Updates
