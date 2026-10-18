@@ -10,12 +10,13 @@ import {
 } from '@mumscards/game-freecell';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
+import { useGameBoardSpace } from './shared/use-game-board-space';
 import { CardStack } from './shared/card-stack';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
@@ -31,7 +32,7 @@ type Props = {
 
 export function FreeCellGameScreen({ mode }: Props) {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const boardSpace = useGameBoardSpace();
   const {
     hydrated,
     saves,
@@ -67,12 +68,16 @@ export function FreeCellGameScreen({ mode }: Props) {
   const [offloadActive, setOffloadActive] = useState(false);
   const [hintText, setHintText] = useState<string | null>(null);
   const [hintCycleIndex, setHintCycleIndex] = useState(0);
-  const availableWidth = Math.max(320, width - spacing.lg * 2);
-  const cardWidth = Math.max(46, Math.min(72, availableWidth / 11.4));
-  const rowGap = spacing.sm;
-  const topRowWidth = cardWidth * 8 + rowGap * 7;
-  const tableauRowWidth = cardWidth * 8 + rowGap * 7;
-  const boardMinWidth = Math.max(topRowWidth, tableauRowWidth);
+  const fanSpace = Math.min(
+    Math.max(0, ...history.present.tableau.map((pile) => pile.length - 1)) * 14,
+    Math.max(0, (boardSpace.height - spacing.lg) / 2),
+  );
+  const cardWidth = Math.max(1, Math.floor(Math.min(72,
+    (boardSpace.width - spacing.sm * 7) / 8,
+    (boardSpace.height - spacing.lg - fanSpace) / (1.42 * 2),
+  )));
+  const cardHeight = Math.round(cardWidth * 1.42);
+  const tableauMaxHeight = Math.max(cardHeight, boardSpace.height - Math.max(44, cardHeight) - spacing.lg);
   const cardDrag = useCardDrag<FreeCellSource, FreeCellDestination>({
     getCards: (source) => {
       if (source.zone === 'tableau') return history.present.tableau[source.pileIndex].slice(source.cardIndex);
@@ -338,6 +343,8 @@ export function FreeCellGameScreen({ mode }: Props) {
     setHintCycleIndex((current) => (current + 1) % hints.length);
   }
 
+  const dragFrame = cardDrag.drag ? boardSpace.fitDrag(cardDrag.drag.x, cardDrag.drag.y, cardWidth) : null;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View ref={cardDrag.rootRef} onLayout={cardDrag.measureTargets} style={styles.screen}>
@@ -491,15 +498,8 @@ export function FreeCellGameScreen({ mode }: Props) {
 
           {history.present.won ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
 
-          <ScrollView
-            contentContainerStyle={styles.horizontalBoardContent}
-            horizontal
-            scrollEnabled={!cardDrag.drag}
-            onScroll={cardDrag.measureTargets}
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator={false}
-          >
-            <View testID="game-board" style={[styles.board, { minWidth: boardMinWidth }]}>
+          <View ref={boardSpace.ref} onLayout={boardSpace.onLayout}>
+            <View testID="game-board" style={[styles.board, { width: boardSpace.width }]}>
               <View style={styles.topRow}>
                 {history.present.freeCells.map((card, cellIndex) => (
                   <View
@@ -558,6 +558,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                 {history.present.tableau.map((pile, pileIndex) => (
                   <View
                     key={`tableau-${pileIndex}`}
+                    testID={`game-tableau-${pileIndex}`}
                     ref={cardDrag.registerTarget(`tableau-${pileIndex}`, { zone: 'tableau', pileIndex })}
                     onLayout={cardDrag.measureTargets}
                     style={dropStyle({ zone: 'tableau', pileIndex })}
@@ -565,6 +566,7 @@ export function FreeCellGameScreen({ mode }: Props) {
                     <MoveHintOverlay feedback={feedback} target={`tableau-${pileIndex}`} />
                     <CardStack
                       cardWidth={cardWidth}
+                      maxHeight={tableauMaxHeight}
                       cards={pile.map((card) => ({ ...card, faceUp: true }))}
                       expanded={expandedTableauPile === pileIndex}
                       hiddenFromIndex={cardDrag.drag?.source.zone === 'tableau' && cardDrag.drag.source.pileIndex === pileIndex ? cardDrag.drag.source.cardIndex : undefined}
@@ -601,16 +603,16 @@ export function FreeCellGameScreen({ mode }: Props) {
                 ))}
               </View>
             </View>
-          </ScrollView>
+          </View>
         </ScrollView>
         <MoveFeedback feedback={feedback} />
-        {cardDrag.drag ? (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {cardDrag.drag && dragFrame ? (
+          <View testID="drag-preview" pointerEvents="none" style={StyleSheet.absoluteFill}>
             <View style={[styles.dragGhost, {
-              left: cardDrag.drag.x - cardDrag.rootOffset.x,
-              top: cardDrag.drag.y - cardDrag.rootOffset.y,
+              left: dragFrame.left - cardDrag.rootOffset.x,
+              top: dragFrame.top - cardDrag.rootOffset.y,
             }]}>
-              <CardStack cardWidth={cardWidth} cards={cardDrag.drag.cards} placeholderLabel="" selected />
+              <CardStack cardWidth={cardWidth} maxHeight={dragFrame.maxHeight} cards={cardDrag.drag.cards} placeholderLabel="" selected />
             </View>
           </View>
         ) : null}
@@ -976,9 +978,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 44,
     paddingHorizontal: spacing.sm,
-  },
-  horizontalBoardContent: {
-    paddingBottom: spacing.sm,
   },
   board: {
     gap: spacing.lg,

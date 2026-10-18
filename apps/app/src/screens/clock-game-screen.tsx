@@ -5,14 +5,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { createClockGame, drawClockStock, normalizeClockState, placeClockActiveCard, type ClockState } from '@mumscards/game-clock';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack } from './shared/card-stack';
 import { useCardDrag } from './shared/use-card-drag';
+import { useGameBoardSpace } from './shared/use-game-board-space';
 import { MoveFeedback, MoveHintOverlay, useMoveFeedback, type MoveSuggestion } from './shared/use-move-feedback';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
@@ -34,8 +35,7 @@ const suitSymbols: Record<PlayingCard['suit'], string> = {
 
 export function ClockGameScreen({ mode }: Props) {
   const router = useRouter();
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const boardSpace = useGameBoardSpace();
   const {
     clearGame,
     deleteSnapshot,
@@ -53,8 +53,7 @@ export function ClockGameScreen({ mode }: Props) {
   const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const feedback = useMoveFeedback('clock', history.present, () => suggestClockMove(history.present));
-  const availableWidth = Math.max(320, width - spacing.lg * 2);
-  const compactLabels = width < 420;
+  const compactLabels = boardSpace.width < 420;
   const hourLabels = compactLabels
     ? baseHourLabels.map((label, index) => (index === 10 ? 'X' : label))
     : baseHourLabels;
@@ -73,24 +72,25 @@ export function ClockGameScreen({ mode }: Props) {
     );
     return Math.max(maxDepth, pile.length + (activeFromThisHour ? 1 : 0));
   }, 1);
-  // Canvas = board diameter + two card heights and outward fans. Leave room for controls.
-  const landscapeCardWidth = Math.floor((height - insets.top - insets.bottom - 160 - maxHourDepth)
-    / (9.44 + 0.4 * (maxHourDepth - 1)));
-  const cardWidth = Math.max(42, Math.min(64, availableWidth / 9,
-    width > height ? landscapeCardWidth : Infinity));
+  // Include the outermost card in every fan and the hour labels, in either orientation.
+  function canvasSize(size: number) {
+    const cardHeight = Math.round(size * 1.42);
+    const radius = size * 6.6 * 0.42;
+    const tail = Math.max(4, Math.round(size * 0.2)) * (maxHourDepth - 1);
+    return Math.ceil(2 * Math.max(radius + tail + cardHeight / 2, radius + cardHeight * 0.55 + 12));
+  }
+  let cardWidth = 64;
+  while (cardWidth > 1 && canvasSize(cardWidth) > Math.min(boardSpace.width, boardSpace.height)) {
+    cardWidth -= 1;
+  }
   const cardHeight = Math.round(cardWidth * 1.42);
-  const radialFanStep = Math.max(8, Math.round(cardWidth * 0.2));
-  const boardSize = cardWidth * 6.6;
-  const radiusPx = boardSize * 0.42;
+  const radialFanStep = Math.max(4, Math.round(cardWidth * 0.2));
+  const radiusPx = cardWidth * 6.6 * 0.42;
   const centerStockGap = spacing.xs;
   const centerStockWidth = cardWidth * 2 + centerStockGap;
   const centerStockHeight = cardHeight * 2 + centerStockGap;
-  const outwardTail = radialFanStep * Math.max(0, maxHourDepth - 1);
   const labelRadius = radiusPx + cardHeight * 0.55;
-  const contentRadius = Math.max(labelRadius + spacing.sm, radiusPx + outwardTail + cardHeight);
-  const canvasPadding = Math.max(spacing.md, Math.round(contentRadius - radiusPx));
-  const clockCanvasSize = boardSize + canvasPadding * 2;
-  const boardMargin = Math.max(spacing.sm, (availableWidth - clockCanvasSize) / 2);
+  const clockCanvasSize = canvasSize(cardWidth);
 
   useEffect(() => {
     if (!hydrated) {
@@ -289,6 +289,8 @@ export function ClockGameScreen({ mode }: Props) {
     clearInteraction();
   }
 
+  const dragFrame = cardDrag.drag ? boardSpace.fitDrag(cardDrag.drag.x, cardDrag.drag.y, cardWidth) : null;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View ref={cardDrag.rootRef} onLayout={cardDrag.measureTargets} style={styles.screen}>
@@ -434,13 +436,7 @@ export function ClockGameScreen({ mode }: Props) {
           {history.present.won ? <Text style={styles.winText}>Clock solved.</Text> : null}
           {history.present.lost ? <Text style={styles.lossText}>Clock lost.</Text> : null}
 
-          <ScrollView
-            scrollEnabled={!cardDrag.drag}
-            horizontal
-            nestedScrollEnabled
-            contentContainerStyle={[styles.clockBoardScrollContent, { paddingHorizontal: boardMargin }]}
-            showsHorizontalScrollIndicator={false}
-          >
+          <View ref={boardSpace.ref} onLayout={boardSpace.onLayout} style={styles.boardSpace}>
             <View testID="game-board" style={[styles.clockBoard, { height: clockCanvasSize, width: clockCanvasSize }]}>
             {history.present.hours.map((pile, hourIndex) => {
               const angle = (Math.PI * 2 * hourIndex) / 12 - Math.PI / 2;
@@ -652,17 +648,17 @@ export function ClockGameScreen({ mode }: Props) {
               );
             })}
             </View>
-          </ScrollView>
+          </View>
         </ScrollView>
         <MoveFeedback feedback={feedback} />
-        {cardDrag.drag ? (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {cardDrag.drag && dragFrame ? (
+          <View testID="drag-preview" pointerEvents="none" style={StyleSheet.absoluteFill}>
             <View style={{
               position: 'absolute',
-              left: cardDrag.drag.x - cardDrag.rootOffset.x,
-              top: cardDrag.drag.y - cardDrag.rootOffset.y,
+              left: dragFrame.left - cardDrag.rootOffset.x,
+              top: dragFrame.top - cardDrag.rootOffset.y,
             }}>
-              <CardStack cardWidth={cardWidth} cards={cardDrag.drag.cards} placeholderLabel="" selected />
+              <CardStack cardWidth={cardWidth} maxHeight={dragFrame.maxHeight} cards={cardDrag.drag.cards} placeholderLabel="" selected />
             </View>
           </View>
         ) : null}
@@ -841,12 +837,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   clockBoard: {
-    alignSelf: 'flex-start',
-    marginTop: spacing.xs,
     position: 'relative',
   },
-  clockBoardScrollContent: {
-    paddingBottom: spacing.xs,
+  boardSpace: {
+    alignItems: 'center',
+    width: '100%',
   },
   centerStockGrid: {
     left: '50%',

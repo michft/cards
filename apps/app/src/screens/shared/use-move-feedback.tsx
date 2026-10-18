@@ -1,10 +1,11 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { recordFailedMove, trainingPosition, visibleJson, useFailedMoveLog, type FailedMoveAttempt } from '../../state/failed-moves';
 import type { GameStateMap, GameVariant } from '../../state/types';
 import { palette, radius, spacing } from '../../theme';
+import { gameFeedbackHeight } from './use-game-board-space';
 
 export type { FailedMoveAttempt } from '../../state/failed-moves';
 export type MoveSuggestion = { label: string; targets: string[] };
@@ -115,18 +116,21 @@ export function MoveHintOverlay({ feedback, target }: { feedback: ReturnType<typ
 
 export function MoveFeedback({ feedback }: { feedback: ReturnType<typeof useMoveFeedback> }) {
   const log = useFailedMoveLog(false);
+  const { height } = useWindowDimensions();
   if (!feedback.message) return null;
   return (
-    <View pointerEvents="box-none" style={styles.feedback}>
+    <View testID="move-feedback" pointerEvents="box-none" style={[styles.feedback, { height: gameFeedbackHeight(height) }]}>
       <View pointerEvents="box-none" style={styles.notice}>
-        <Text pointerEvents="none" role="status" accessibilityLiveRegion="polite" style={styles.message}>
-          {feedback.message}{feedback.helpMessage ? `\n${feedback.helpMessage}` : ''}
-        </Text>
+        <ScrollView style={styles.messageScroll} nestedScrollEnabled>
+          <Text role="status" accessibilityLiveRegion="polite" style={styles.message}>
+            {feedback.message}{feedback.helpMessage ? `\n${feedback.helpMessage}` : ''}
+          </Text>
+          {log.error && log.pending > 0 ? <Text style={styles.logError}>This attempt is not saved to the training log. Retry logging in Settings.</Text> : null}
+        </ScrollView>
         <Pressable accessibilityRole="button" accessibilityLabel="Dismiss move explanation" onPress={feedback.clear} style={styles.dismiss}>
           <Text style={styles.close}>×</Text>
         </Pressable>
       </View>
-      {log.error && log.pending > 0 ? <Text pointerEvents="none" style={styles.logError}>This attempt is not saved to the training log. Retry logging in Settings.</Text> : null}
     </View>
   );
 }
@@ -135,9 +139,10 @@ const styles = StyleSheet.create({
   feedback: { position: 'absolute', bottom: spacing.md, left: spacing.md, right: spacing.md, zIndex: 50 },
   hint: { ...StyleSheet.absoluteFillObject, borderWidth: 3, borderColor: palette.onTable, borderRadius: radius.md,
     backgroundColor: 'rgba(215, 181, 109, 0.25)', zIndex: 35 },
-  notice: { flexDirection: 'row', alignItems: 'center', backgroundColor: palette.paper, borderColor: palette.accent, borderWidth: 2, borderRadius: radius.md, paddingLeft: spacing.md, gap: spacing.xs },
-  message: { flex: 1, color: palette.ink, fontSize: 16, lineHeight: 23, paddingVertical: spacing.sm },
+  notice: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: palette.paper, borderColor: palette.accent, borderWidth: 2, borderRadius: radius.md, paddingLeft: spacing.md, gap: spacing.xs },
+  messageScroll: { flex: 1, maxHeight: '100%' },
+  message: { color: palette.ink, fontSize: 16, lineHeight: 23, paddingVertical: spacing.sm },
   dismiss: { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   close: { color: palette.ink, fontSize: 26 },
-  logError: { color: palette.paper, fontSize: 14, lineHeight: 21, paddingTop: spacing.xs },
+  logError: { color: palette.ink, fontSize: 14, lineHeight: 21, paddingBottom: spacing.xs },
 });

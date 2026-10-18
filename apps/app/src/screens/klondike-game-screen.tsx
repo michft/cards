@@ -36,6 +36,7 @@ import { CardStack, type DragPayload as DragGesturePayload } from './shared/card
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { isEditableTarget, useWebGameShortcuts } from './shared/use-web-game-shortcuts';
 import { MoveFeedback, MoveHintOverlay, useMoveFeedback } from './shared/use-move-feedback';
+import { useGameBoardSpace } from './shared/use-game-board-space';
 import { getKlondikeRejection } from './shared/move-rejection-reasons';
 
 type HistoryState = GameHistory<KlondikeState>;
@@ -68,6 +69,7 @@ type Props = {
 export function KlondikeGameScreen({ gameId, mode }: Props) {
   const { height, width } = useWindowDimensions();
   const router = useRouter();
+  const boardSpace = useGameBoardSpace();
   const orientation = width > height ? 'landscape' : 'portrait';
   const { hydrated, saves, saveGame, clearGame, settings, snapshots, saveSnapshot, deleteSnapshot } = useAppModel();
   const savedGame = saves.klondike;
@@ -611,17 +613,23 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
     return [];
   }, [dragState, history.present, selectedSource, emptyTableauPolicy]);
 
-  const availableWidth = Math.max(320, width - spacing.lg * 2);
-  const cardWidth = orientation === 'landscape'
-    ? Math.max(66, Math.min(96, availableWidth / 10.8))
-    : Math.max(48, Math.min(74, availableWidth / 8.2));
-  const wasteOffset = Math.max(18, Math.round(cardWidth * 0.42));
-  const wasteStackWidth = cardWidth + wasteOffset * 2;
-  const wasteZoneWidth = wasteStackWidth + spacing.xs * 2;
+  // Each zone includes its padding and border outside the card itself.
+  const zoneInset = spacing.xs * 2 + 2;
   const rowGap = spacing.sm;
-  const topRowWidth = cardWidth * 5 + wasteZoneWidth + rowGap * 5;
-  const tableauRowWidth = cardWidth * 7 + rowGap * 6;
-  const boardMinWidth = Math.max(topRowWidth, tableauRowWidth);
+  const fanSpace = Math.min(
+    Math.max(...history.present.tableau.map((pile) => pile.slice(0, -1).reduce((sum, card) => sum + (card.faceUp ? 14 : 4), 0))),
+    Math.max(0, (boardSpace.height - spacing.lg - zoneInset * 2) / 2),
+  );
+  const cardWidth = Math.max(1, Math.floor(Math.min(
+    orientation === 'landscape' ? 96 : 74,
+    (boardSpace.width - rowGap * 6 - zoneInset * 7) / 7,
+    (boardSpace.height - spacing.lg - zoneInset * 2 - fanSpace) / (1.42 * 2),
+  )));
+  const cardHeight = Math.round(cardWidth * 1.42);
+  const wasteOffset = Math.max(1, Math.round(cardWidth * 0.42));
+  const wasteStackWidth = cardWidth + wasteOffset * 2;
+  const tableauMaxHeight = Math.max(cardHeight,
+    boardSpace.height - cardHeight - spacing.lg - zoneInset * 2);
 
   const content = (
     <>
@@ -714,13 +722,8 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
       {hintText ? <Text style={styles.hintText}>{hintText}</Text> : null}
       {history.present.completed ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
 
-      <ScrollView
-        contentContainerStyle={styles.horizontalBoardContent}
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={false}
-      >
-        <View testID="game-board" style={[styles.board, { minWidth: boardMinWidth }]}>
+      <View ref={boardSpace.ref} onLayout={boardSpace.onLayout}>
+        <View testID="game-board" style={[styles.board, { width: boardSpace.width }]}>
         <View style={styles.topRow}>
           <Zone
             onPress={draw}
@@ -736,7 +739,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
             />
           </Zone>
 
-          <Zone width={wasteZoneWidth}>
+          <Zone width={wasteStackWidth}>
             <MoveHintOverlay feedback={feedback} target="waste" />
             <CardStack
               cardWidth={cardWidth}
@@ -838,6 +841,7 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
               <MoveHintOverlay feedback={feedback} target={`tableau-${pileIndex}`} />
               <CardStack
                 cardWidth={cardWidth}
+                maxHeight={tableauMaxHeight}
                 cards={pile}
                 expanded={expandedTableauPile === pileIndex}
                 hiddenFromIndex={
@@ -876,9 +880,11 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
           ))}
         </View>
         </View>
-      </ScrollView>
+      </View>
     </>
   );
+
+  const dragFrame = dragState ? boardSpace.fitDrag(dragState.x, dragState.y, cardWidth) : null;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -958,20 +964,21 @@ export function KlondikeGameScreen({ gameId, mode }: Props) {
 
         <MoveFeedback feedback={feedback} />
 
-        {dragState ? (
-          <View pointerEvents="none" style={styles.dragOverlay}>
+        {dragState && dragFrame ? (
+          <View testID="drag-preview" pointerEvents="none" style={styles.dragOverlay}>
             <View
               style={[
                 styles.dragGhost,
                 {
-                  left: dragState.x - rootOffset.x,
-                  top: dragState.y - rootOffset.y,
+                  left: dragFrame.left - rootOffset.x,
+                  top: dragFrame.top - rootOffset.y,
                   width: cardWidth,
                 },
               ]}
             >
               <CardStack
                 cardWidth={cardWidth}
+                maxHeight={dragFrame.maxHeight}
                 cards={dragState.cards}
                 placeholderLabel=""
                 selected={Boolean(dragState.activeDestination)}
@@ -1180,8 +1187,9 @@ function Zone({
     <View
       onLayout={zoneKey ? () => onMeasureZone?.(zoneKey) : undefined}
       ref={zoneKey ? registerZone?.(zoneKey) : undefined}
+      testID={destination?.zone === 'tableau' ? `game-tableau-${destination.pileIndex}` : undefined}
       style={{
-        width,
+        width: width + spacing.xs * 2 + 2,
       }}
     >
       <Pressable
@@ -1233,9 +1241,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(8, 25, 19, 0.18)',
     borderRadius: radius.md,
     padding: spacing.xs,
-  },
-  horizontalBoardContent: {
-    paddingBottom: spacing.sm,
   },
   boardHeader: {
     width: '100%',
@@ -1387,7 +1392,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(246, 241, 231, 0.08)',
     gap: spacing.sm,
     alignItems: 'center',
-    minHeight: 120,
     padding: spacing.xs,
   },
   zoneHighlighted: {
@@ -1405,6 +1409,5 @@ const styles = StyleSheet.create({
   dragGhost: {
     position: 'absolute',
     opacity: 0.96,
-    transform: [{ rotate: '-1.5deg' }],
   },
 });

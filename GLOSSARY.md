@@ -2,7 +2,8 @@
 
 - **Table text:** Warm white (`onTable`) or pale green (`onTableMuted`) text on the green playing surface. Card faces and light buttons keep dark ink and red/black suits.
 
-- **Landscape board:** Game layout adapted to a wider, shorter screen. Pyramid places stock beside its rows; Clock sizes its full circle to available height. Rotation preserves the deal and history.
+- **Landscape board:** Game layout adapted to a wider, shorter screen. All games measure usable space below their controls. Pyramid chooses stock placement to fit its rows; Clock sizes its full circle and labels. Rotation preserves the deal and history.
+- **Bounded pile:** Tableau cards whose spacing compresses to available board height, including when held open. Every card remains present; exposed ranks scale to their visible strips.
 
 - **Deal:** Original and current card layouts plus game rules. New creates a fresh deal; Restart restores its original layout. Legacy saves without an original layout restart from their saved position.
 - **Pending defaults:** Settings used when creating the next deal. Changing them does not alter an active deal.

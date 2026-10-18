@@ -12,14 +12,15 @@ import {
 } from '@mumscards/game-pyramid';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import { palette, radius, spacing, typography } from '../theme';
 import { createGameHistory as createHistoryState, persistGameHistory, restoreGameHistory, type GameHistory } from './shared/game-history';
 import { CardStack } from './shared/card-stack';
 import { useCardDrag } from './shared/use-card-drag';
+import { useGameBoardSpace } from './shared/use-game-board-space';
 import { MoveFeedback, MoveHintOverlay, useMoveFeedback, type FailedMoveAttempt, type MoveSuggestion } from './shared/use-move-feedback';
 import { ShortcutPressable } from './shared/shortcut-pressable';
 import { useWebGameShortcuts } from './shared/use-web-game-shortcuts';
@@ -32,9 +33,7 @@ type Props = {
 
 export function PyramidGameScreen({ mode }: Props) {
   const router = useRouter();
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const landscape = width > height && width >= 900;
+  const boardSpace = useGameBoardSpace();
   const {
     clearGame,
     deleteSnapshot,
@@ -54,14 +53,23 @@ export function PyramidGameScreen({ mode }: Props) {
   const [snapshotPickerOpen, setSnapshotPickerOpen] = useState(false);
   const feedback = useMoveFeedback('pyramid', history.present,
     (attempt) => suggestPyramidMove(history.present, selectedSource, attempt));
-  const availableWidth = Math.max(320, width - spacing.lg * 2);
-  // Seven card rows with six overlaps; stock moves beside them on wide landscape screens.
-  const landscapeCardWidth = Math.floor((height - insets.top - insets.bottom - 160) / 8.62);
-  const cardWidth = Math.max(44, Math.min(74, availableWidth / 9.5,
-    landscape ? landscapeCardWidth : Infinity));
+  // Choose the stock placement that permits the largest cards inside the actual board space.
+  let cardWidth = 74;
+  let sideStock = false;
+  for (; cardWidth > 1; cardWidth -= 1) {
+    const cardHeight = Math.round(cardWidth * 1.42);
+    const tableWidth = cardWidth * 7 + Math.max(4, Math.round(cardWidth * 0.08)) * 6;
+    const tableHeight = cardHeight * 7 - Math.round(cardWidth * 0.22) * 6;
+    const columnFits = tableWidth <= boardSpace.width
+      && tableHeight + spacing.lg + Math.max(cardHeight, 50) <= boardSpace.height;
+    const sideFits = tableWidth + 120 + spacing.lg <= boardSpace.width
+      && Math.max(tableHeight, cardHeight * 2 + spacing.sm * 2 + 50) <= boardSpace.height;
+    if (columnFits || sideFits) {
+      sideStock = !columnFits;
+      break;
+    }
+  }
   const pyramidRowGap = Math.max(4, Math.round(cardWidth * 0.08));
-  const boardMinWidth = cardWidth * 7 + pyramidRowGap * 6 + spacing.lg
-    + (landscape ? 120 + spacing.lg : 0);
   const stockCount = history.present.stock.length;
   const canRecycle = stockCount === 0
     && history.present.waste.length > 0
@@ -291,6 +299,8 @@ export function PyramidGameScreen({ mode }: Props) {
     }
   }
 
+  const dragFrame = cardDrag.drag ? boardSpace.fitDrag(cardDrag.drag.x, cardDrag.drag.y, cardWidth) : null;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View ref={cardDrag.rootRef} onLayout={cardDrag.measureTargets} style={styles.screen}>
@@ -440,15 +450,9 @@ export function PyramidGameScreen({ mode }: Props) {
 
           {history.present.won ? <Text style={styles.winText}>Game won. Start another round.</Text> : null}
 
-          <ScrollView
-            scrollEnabled={!cardDrag.drag}
-            contentContainerStyle={styles.horizontalBoardContent}
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator={false}
-          >
-            <View testID="game-board" style={[styles.board, landscape && styles.boardLandscape, { minWidth: boardMinWidth }]}>
-              <View style={[styles.topRow, landscape && styles.topRowLandscape]}>
+          <View ref={boardSpace.ref} onLayout={boardSpace.onLayout} style={styles.boardSpace}>
+            <View testID="game-board" style={[styles.board, sideStock && styles.boardLandscape]}>
+              <View style={[styles.topRow, sideStock && styles.topRowLandscape]}>
                 <View>
                   <CardStack
                     accessibilityLabel="Stock: draw or recycle"
@@ -548,17 +552,17 @@ export function PyramidGameScreen({ mode }: Props) {
                 ))}
               </View>
             </View>
-          </ScrollView>
+          </View>
         </ScrollView>
         <MoveFeedback feedback={feedback} />
-        {cardDrag.drag ? (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {cardDrag.drag && dragFrame ? (
+          <View testID="drag-preview" pointerEvents="none" style={StyleSheet.absoluteFill}>
             <View style={{
               position: 'absolute',
-              left: cardDrag.drag.x - cardDrag.rootOffset.x,
-              top: cardDrag.drag.y - cardDrag.rootOffset.y,
+              left: dragFrame.left - cardDrag.rootOffset.x,
+              top: dragFrame.top - cardDrag.rootOffset.y,
             }}>
-              <CardStack cardWidth={cardWidth} cards={cardDrag.drag.cards} placeholderLabel="" selected />
+              <CardStack cardWidth={cardWidth} maxHeight={dragFrame.maxHeight} cards={cardDrag.drag.cards} placeholderLabel="" selected />
             </View>
           </View>
         ) : null}
@@ -749,8 +753,9 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: '600',
   },
-  horizontalBoardContent: {
-    paddingBottom: spacing.sm,
+  boardSpace: {
+    alignItems: 'center',
+    width: '100%',
   },
   board: {
     gap: spacing.lg,

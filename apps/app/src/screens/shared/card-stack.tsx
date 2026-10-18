@@ -29,6 +29,7 @@ type Props = {
   emptyState?: 'default' | 'recycle';
   expanded?: boolean;
   layoutMode?: 'stack' | 'waste';
+  maxHeight?: number;
   placeholderLabel: string;
   onCardPress?(): void;
   onFaceUpCardPress?(cardIndex: number): void;
@@ -62,6 +63,7 @@ export function CardStack({
   emptyState = 'default',
   expanded = false,
   layoutMode = 'stack',
+  maxHeight,
   placeholderLabel,
   onCardPress,
   onFaceUpCardPress,
@@ -79,7 +81,7 @@ export function CardStack({
   const cardHeight = Math.round(cardWidth * 1.42);
   const hiddenOffset = Math.round(cardHeight * (expanded ? 0.24 : 0.18));
   const faceUpOffset = Math.round(cardHeight * (expanded ? 0.48 : 0.28));
-  const wasteOffset = Math.max(18, Math.round(cardWidth * 0.42));
+  const wasteOffset = Math.max(1, Math.round(cardWidth * 0.42));
   if (cards.length === 0) {
     const placeholder = (
       <View
@@ -91,7 +93,10 @@ export function CardStack({
           },
         ]}
       >
-        <Text style={styles.placeholderText}>{placeholderLabel}</Text>
+        <Text numberOfLines={1} style={[styles.placeholderText, {
+          maxWidth: '100%',
+          fontSize: Math.min(12, Math.max(1, (cardWidth - 4) / Math.max(1, placeholderLabel.length * 0.7) - 1.2)),
+        }]}>{placeholderLabel}</Text>
       </View>
     );
 
@@ -106,16 +111,21 @@ export function CardStack({
     );
   }
 
-  const totalHeight = layoutMode === 'waste'
-    ? cardHeight
-    : cards.reduce((height, card, index) => {
-      if (index === 0) {
-        return cardHeight;
-      }
-
-      const faceUp = !('faceUp' in card) || card.faceUp;
-      return height + (faceUp ? faceUpOffset : hiddenOffset);
-    }, 0);
+  const offsets = [0];
+  for (let index = 1; index < cards.length; index += 1) {
+    const previous = cards[index - 1];
+    const faceUp = !('faceUp' in previous) || previous.faceUp;
+    offsets.push(offsets[index - 1] + (layoutMode === 'waste' ? 0 : faceUp ? faceUpOffset : hiddenOffset));
+  }
+  const desiredSpan = offsets[offsets.length - 1];
+  if (maxHeight !== undefined && layoutMode === 'stack' && desiredSpan > 0) {
+    const availableSpan = Math.max(0, maxHeight - cardHeight);
+    const span = Math.min(desiredSpan, availableSpan);
+    for (let index = 1; index < offsets.length; index += 1) {
+      offsets[index] = offsets[index] / desiredSpan * span;
+    }
+  }
+  const totalHeight = cardHeight + offsets[offsets.length - 1];
   const totalWidth = layoutMode === 'waste'
     ? cardWidth + wasteOffset * Math.max(0, cards.length - 1)
     : cardWidth;
@@ -133,21 +143,26 @@ export function CardStack({
       {cards.map((card, index) => {
         const faceUp = !('faceUp' in card) || card.faceUp;
         const isBottomCard = index === cards.length - 1;
-        const offset = layoutMode === 'waste'
-          ? 0
-          : cards.slice(0, index).reduce((value, current) => {
-            const previousFaceUp = !('faceUp' in current) || current.faceUp;
-            return value + (previousFaceUp ? faceUpOffset : hiddenOffset);
-          }, 0);
+        const offset = offsets[index];
         const horizontalOffset = layoutMode === 'waste' ? wasteOffset * index : 0;
         const isInteractiveCard = layoutMode === 'waste' ? index === cards.length - 1 : true;
         const content = faceUp && variant !== 'back'
-          ? renderFace(card, cardWidth, cardHeight, selected)
+          ? renderFace(
+            card,
+            cardWidth,
+            cardHeight,
+            selected,
+            layoutMode === 'stack' && !isBottomCard ? offsets[index + 1] - offset : undefined,
+          )
           : renderBack(cardWidth, cardHeight, selected, emptyState === 'recycle');
 
         return (
           <DraggableCardLayer
-            accessibilityLabel={accessibilityLabel ?? (!faceUp && onFaceDownCardPress ? 'Face-down card' : undefined)}
+            accessibilityLabel={accessibilityLabel ?? (
+              faceUp && variant !== 'back'
+                ? `${rankLabel(card.rank)} ${suitSymbols[card.suit]} ${suitSymbols[card.suit]} ${suitSymbols[card.suit]}`
+                : !faceUp && onFaceDownCardPress ? 'Face-down card' : undefined
+            )}
             key={card.id}
             cardHeight={cardHeight}
             cardWidth={cardWidth}
@@ -402,14 +417,30 @@ function DraggableCardLayer({
   );
 }
 
-function renderFace(card: StackCard, width: number, height: number, selected?: boolean) {
+function renderFace(card: StackCard, width: number, height: number, selected?: boolean, exposedHeight?: number) {
   const rankText = card.rank === 10 && width <= 56 ? 'x' : rankLabel(card.rank);
   const compact = width <= 56;
-  const compactPadding = compact ? spacing.xs : spacing.sm;
-  const cornerRankSize = compact ? 14 : 18;
-  const leadingSuitSize = compact ? 11 : 14;
-  const centerSuitSize = compact ? 20 : 28;
+  const narrow = width < 44;
+  const compactPadding = narrow ? 2 : compact ? spacing.xs : spacing.sm;
+  const cornerRankSize = narrow ? Math.round(width * 0.36) : compact ? 14 : 18;
+  const leadingSuitSize = narrow ? Math.round(width * 0.3) : compact ? 11 : 14;
+  const centerSuitSize = narrow ? Math.round(width * 0.45) : compact ? 20 : 28;
   const cornerSuitSize = compact ? 12 : 16;
+  const topPadding = exposedHeight === undefined
+    ? compactPadding
+    : Math.max(0, Math.min(compactPadding, Math.floor(exposedHeight - cornerRankSize - 2)));
+  const visibleRankSize = exposedHeight === undefined
+    ? cornerRankSize
+    : Math.max(1, Math.min(cornerRankSize, Math.floor(exposedHeight - topPadding - 2)));
+  const leadingHeight = narrow
+    ? Math.max(visibleRankSize + 1, leadingSuitSize + 1)
+    : visibleRankSize + leadingSuitSize + 4;
+  const contentHeight = height - topPadding - compactPadding - 2;
+  const showCornerSuit = !narrow && leadingHeight + centerSuitSize + cornerSuitSize + 3 <= contentHeight;
+  const visibleCenterSuitSize = Math.max(1, Math.min(
+    centerSuitSize,
+    Math.floor(contentHeight - leadingHeight - (showCornerSuit ? cornerSuitSize + 1 : 0) - 2),
+  ));
 
   return (
     <View
@@ -420,15 +451,16 @@ function renderFace(card: StackCard, width: number, height: number, selected?: b
           width,
           height,
           padding: compactPadding,
+          paddingTop: topPadding,
         },
       ]}
     >
-      <View style={styles.leadingCorner}>
+      <View style={[styles.leadingCorner, narrow && styles.narrowLeadingCorner]}>
         <Text
           numberOfLines={1}
           style={[
             styles.cornerRank,
-            { fontSize: cornerRankSize, lineHeight: cornerRankSize + 1 },
+            { fontSize: visibleRankSize, lineHeight: visibleRankSize + 1 },
             card.color === 'red' ? styles.red : styles.black,
           ]}
         >
@@ -447,13 +479,13 @@ function renderFace(card: StackCard, width: number, height: number, selected?: b
       <Text
         style={[
           styles.centerSuit,
-          { fontSize: centerSuitSize, lineHeight: centerSuitSize + 2 },
+          { fontSize: visibleCenterSuitSize, lineHeight: visibleCenterSuitSize + 2 },
           card.color === 'red' ? styles.red : styles.black,
         ]}
       >
         {suitSymbols[card.suit]}
       </Text>
-      <Text
+      {showCornerSuit && <Text
         style={[
           styles.cornerSuit,
           { fontSize: cornerSuitSize, lineHeight: cornerSuitSize + 1 },
@@ -461,7 +493,7 @@ function renderFace(card: StackCard, width: number, height: number, selected?: b
         ]}
       >
         {suitSymbols[card.suit]}
-      </Text>
+      </Text>}
     </View>
   );
 }
@@ -565,6 +597,10 @@ const styles = StyleSheet.create({
   },
   leadingCorner: {
     gap: 2,
+  },
+  narrowLeadingCorner: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   leadingSuit: {
     fontSize: 14,
