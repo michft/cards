@@ -1,5 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { palette, radius, spacing, typography } from '../theme';
@@ -59,10 +60,20 @@ const rulesByGame: Record<string, { title: string; rules: string[] }> = {
 
 export function RulesScreen() {
   const params = useLocalSearchParams<{ game?: string }>();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const game = params.game ?? 'klondike';
   const content = Object.prototype.hasOwnProperty.call(rulesByGame, game)
     ? rulesByGame[game]
     : rulesByGame.klondike;
+
+  if (!mounted) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <ActivityIndicator accessibilityLabel="Loading rules" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>

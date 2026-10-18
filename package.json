@@ -9,7 +9,7 @@
     "android": "pnpm --dir apps/app android",
     "web": "pnpm web:dev",
     "web:dev": "pnpm --filter app run web",
-    "web:preview": "pnpm exec serve apps/app/dist --listen 8081 --single",
+    "web:preview": "pnpm exec serve apps/app/dist --listen 8081 --config ../../../serve.json",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm test:unit && pnpm test:components",
     "test:unit": "pnpm -r --filter \"./packages/*\" test",
@@ -17,7 +17,9 @@
     "test:e2e:web": "playwright test",
     "test:e2e:native": "maestro test maestro/flows",
     "build:web": "pnpm web:build",
-    "web:build": "pnpm --filter app run web:build"
+    "web:build": "pnpm --filter app run web:build",
+    "web:package": "pnpm web:build && node scripts/package-offline.mjs",
+    "test:offline-build": "node --test scripts/build-offline.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

@@ -65,13 +65,15 @@ test('tabs merge different games and block stale same-game writes', async ({ pag
   ]);
   await expect(page).toHaveURL(/\/game\/klondike\?mode=resume$/);
   await expect(other).toHaveURL(/\/game\/freecell\?mode=resume$/);
-  const freecell = await page.evaluate(() => JSON.parse(localStorage.getItem('mumscards.saves')!).freecell);
-  expect(freecell).toBeTruthy();
   expect(await savedKlondike(page)).toBeTruthy();
   await page.getByRole('button', { name: 'Draw', exact: true }).click();
   await expect.poll(async () => (await savedKlondike(page))?.waste.length).toBe(3);
   await other.goto('/game/klondike?mode=resume');
   await expect(other.getByRole('button', { name: 'Draw', exact: true })).toBeVisible();
+  // The new→resume remount saves once more. Capture its final envelope after
+  // leaving FreeCell, so a legitimate mount timestamp is not a merge failure.
+  const freecell = await page.evaluate(() => JSON.parse(localStorage.getItem('mumscards.saves')!).freecell);
+  expect(freecell).toBeTruthy();
   for (let count = 6; count <= 9; count += 3) {
     await page.getByRole('button', { name: 'Draw', exact: true }).click();
     await expect.poll(async () => (await savedKlondike(page))?.waste.length).toBe(count);
