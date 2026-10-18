@@ -2,8 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- Installable iPad web app with a verified, versioned offline copy of all five games, Rules, Settings, and local saves.
+- Offline readiness/retry status, safe waiting updates, deployable ZIP packaging, and iPad setup instructions in `docs/ipad-offline.md`.
+
 ### Fixed
 
+- Announce Rules/Settings loading politely, explain missing ZIP tooling, and return an offline home page or HTTP 503 when a cached file and network are unavailable.
+- Give gameplay, menu, and snapshot controls 44-pixel minimum touch targets and reserve space below the floating Games menu.
+- Give Spider's settings button the same accessible label as the other games.
+- Hydrate query-dependent Rules and Settings content after mounting to match static HTML.
 - Validate saved cards, variant layouts, rules, and history before mounting; ignore malformed positions without crashing.
 - Recover legacy Clock chains with active Kings and migrate original flat-stock layouts without losing cards; reject ambiguous origins.
 - Fix inherited-key Rules routes and explain Clock King returns and FreeCell auxiliary columns correctly.

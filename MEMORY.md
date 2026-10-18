@@ -48,7 +48,16 @@ These rules should apply to every game module (`Klondike`, `Spider`, `FreeCell`,
 
 ## Validation
 - Run `pnpm typecheck` and `pnpm test` for engine, persistence, and interaction regressions.
-- For web verification, install the Playwright browser with `pnpm exec playwright install chromium --only-shell`, build with `pnpm web:build`, then run `pnpm test:e2e:web`.
+- For web verification, install Playwright browsers with `pnpm exec playwright install chromium webkit`, run `pnpm test:offline-build`, build with `pnpm web:build`, then run `pnpm test:e2e:web`.
+- Verify iPad portrait/landscape touch layouts and offline cold launches in Chromium and WebKit. WebKit offline emulation can reject service-worker navigation with an internal error; use the server-stopped harness.
+
+## Offline iPad app
+- Export and host the complete production build at an HTTPS site's root; `pnpm web:package` creates the deployable ZIP. The ZIP itself is not an iPad app installation.
+- Install through Safari Add to Home Screen/Open as Web App. Open the installed app online and wait for Ready offline before disconnecting; its storage/setup can be separate from Safari.
+- Cache all five games, Rules, Settings, and assets together. Validate downloads against the build hashes; incomplete or mismatched files must never report readiness.
+- Let downloaded updates wait until all existing app windows close. Preserve local saves independently of app cache updates.
+- Keep offline availability and save durability distinct; readiness must not hide save errors. Clearing website data or storage eviction can remove local data.
+- See `docs/ipad-offline.md` for installation, deployment, and verification limits.
 
 ## UX Baseline
 - Show a clear win state message in each game screen.

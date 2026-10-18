@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Mum's Cards",
+  "short_name": "Mum's Cards",
+  "description": "Five solitaire games, ready to play offline.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1f5a44",
+  "theme_color": "#1f5a44",
+  "icons": [
+    { "src": "/app-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

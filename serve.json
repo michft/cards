@@ -1,0 +1,37 @@
+{
+  "cleanUrls": false,
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/game/clock",
+      "destination": "/game/[gameId].html"
+    },
+    {
+      "source": "/game/freecell",
+      "destination": "/game/[gameId].html"
+    },
+    {
+      "source": "/game/klondike",
+      "destination": "/game/[gameId].html"
+    },
+    {
+      "source": "/game/pyramid",
+      "destination": "/game/[gameId].html"
+    },
+    {
+      "source": "/game/spider",
+      "destination": "/game/[gameId].html"
+    },
+    {
+      "source": "/rules",
+      "destination": "/rules.html"
+    },
+    {
+      "source": "/settings",
+      "destination": "/settings.html"
+    }
+  ]
+}

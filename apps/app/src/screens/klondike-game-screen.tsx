@@ -1143,7 +1143,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingTop: spacing.xl + spacing.lg,
+    paddingTop: 44 + spacing.sm * 2,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     gap: spacing.md,
@@ -1206,6 +1206,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   gameSwitchButton: {
+    minHeight: 44,
+    justifyContent: 'center',
     backgroundColor: palette.paper,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
@@ -1225,6 +1227,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   actionButton: {
+    minHeight: 44,
+    justifyContent: 'center',
     backgroundColor: palette.paper,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
@@ -1233,7 +1237,7 @@ const styles = StyleSheet.create({
   actionIconButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 38,
+    minWidth: 44,
     paddingHorizontal: spacing.sm,
   },
   actionButtonPressed: {
@@ -1260,6 +1264,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   snapshotLoadButton: {
+    minHeight: 44,
+    justifyContent: 'center',
     backgroundColor: '#f2ebdc',
     borderRadius: radius.sm,
     flex: 1,
@@ -1271,8 +1277,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f2ebdc',
     borderRadius: radius.sm,
     justifyContent: 'center',
-    minHeight: 30,
-    minWidth: 30,
+    minHeight: 44,
+    minWidth: 44,
   },
   snapshotText: {
     color: palette.ink,

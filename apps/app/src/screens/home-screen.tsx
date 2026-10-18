@@ -1,10 +1,11 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppModel } from '../state/app-provider';
 import type { GameVariant } from '../state/types';
 import { palette, radius, spacing, typography } from '../theme';
+import { OfflineStatus } from '../offline/offline-status';
 
 export function HomeScreen() {
   const { hydrated, hydrationError, retryHydration, saves } = useAppModel();
@@ -26,13 +27,12 @@ export function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>Offline-first solitaire</Text>
           <Text style={styles.title}>Mum&apos;s Cards</Text>
           <Text style={styles.subtitle}>
-            A modular Solitare scaffold with a reusable engine, future variant slots, and
-            conservative table styling.
+            Five solitaire games. Save your place and play without a network.
           </Text>
         </View>
 
@@ -109,8 +109,9 @@ export function HomeScreen() {
               {canContinue ? 'Continue Last Game' : 'Continue unavailable'}
             </Text>
           </Pressable>
+          <OfflineStatus />
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.table,
   },
   container: {
-    flex: 1,
+    flexGrow: 1,
     padding: spacing.lg,
     justifyContent: 'space-between',
   },
